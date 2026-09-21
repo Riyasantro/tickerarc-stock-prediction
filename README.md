@@ -23,7 +23,3 @@ The project is being built incrementally over five days:
 3. Market intelligence and agent tools
 4. Dashboard
 5. Testing, evaluation, and documentation
-
-## Status
-
-Day 1 — Data and project foundation
