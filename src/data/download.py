@@ -49,7 +49,7 @@ def _normalise_columns(frame: pd.DataFrame, symbol: str) -> pd.DataFrame:
 def download_history(
     symbol: str,
     *,
-    period: str = "5y",
+    period: str = "max",
     interval: str = "1d",
     auto_adjust: bool = True,
 ) -> pd.DataFrame:
@@ -103,7 +103,7 @@ def download_universe(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Download TickerArc market data")
-    parser.add_argument("--period", default="5y")
+    parser.add_argument("--period", default="max")
     parser.add_argument("--interval", default="1d")
     parser.add_argument("--symbol", action="append", dest="symbols")
     args = parser.parse_args()
