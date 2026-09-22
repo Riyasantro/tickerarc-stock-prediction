@@ -11,6 +11,7 @@ inference; training is not repeated automatically.
 from __future__ import annotations
 
 from datetime import datetime, time
+import json
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -28,6 +29,9 @@ from src.data.pipeline import PROCESSED_DIR, process_downloaded_files
 from src.features.chart_patterns import add_chart_pattern_features
 from src.features.talib_features import add_all_candlestick_patterns
 from src.models.trainer import (
+    EVAL_YEARS,
+    TRAIN_YEARS,
+    evaluate_global_model,
     load_model,
     load_training_frames,
     predict_latest,
@@ -40,6 +44,8 @@ MODEL_DIR = ROOT / "models"
 MODEL_PATH = MODEL_DIR / "tickerarc_global_lstm.pt"
 SCALER_PATH = MODEL_DIR / "tickerarc_scaler.joblib"
 META_PATH = MODEL_DIR / "tickerarc_model_meta.json"
+EVAL_PATH = MODEL_DIR / "tickerarc_holdout_eval.json"
+HISTORY_MARKER = ROOT / "data" / "cache" / ".tickerarc_max_history"
 
 
 st.set_page_config(
@@ -126,7 +132,7 @@ def get_model_bundle():
 
 
 def bootstrap_project() -> None:
-    """Fetch history, rebuild Day 2 features when needed, and train once."""
+    """Fetch maximum history, train on 24 years, and evaluate the next 2 years."""
     processed_files = list(PROCESSED_DIR.glob("*.parquet"))
     feature_refresh_needed = not processed_files
 
@@ -140,22 +146,28 @@ def bootstrap_project() -> None:
         except Exception:
             feature_refresh_needed = True
 
-    if feature_refresh_needed:
-        if not any((ROOT / "data" / "raw").glob("*.parquet")):
-            with st.status(
-                "Downloading NIFTY 50 historical data…",
-                expanded=True,
-            ) as status:
-                download_universe(
-                    NIFTY50_SYMBOLS,
-                    period="5y",
-                    interval="1d",
-                )
-                status.update(
-                    label="Historical data downloaded",
-                    state="complete",
-                )
+    # Older versions downloaded only five years. Force one upgrade to max history.
+    history_refresh_needed = not HISTORY_MARKER.exists()
 
+    if history_refresh_needed:
+        with st.status(
+            "Downloading maximum available NIFTY 50 history…",
+            expanded=True,
+        ) as status:
+            download_universe(
+                NIFTY50_SYMBOLS,
+                period="max",
+                interval="1d",
+            )
+            HISTORY_MARKER.parent.mkdir(parents=True, exist_ok=True)
+            HISTORY_MARKER.write_text("max-history-downloaded", encoding="utf-8")
+            feature_refresh_needed = True
+            status.update(
+                label="Maximum available history downloaded",
+                state="complete",
+            )
+
+    if feature_refresh_needed:
         with st.status(
             "Building technical and pattern features…",
             expanded=True,
@@ -166,22 +178,35 @@ def bootstrap_project() -> None:
                 state="complete",
             )
 
-    if not (MODEL_PATH.exists() and SCALER_PATH.exists() and META_PATH.exists()):
+    model_rebuild_needed = not (
+        MODEL_PATH.exists() and SCALER_PATH.exists() and META_PATH.exists()
+    )
+    if not model_rebuild_needed:
+        try:
+            metadata = json.loads(META_PATH.read_text(encoding="utf-8"))
+            model_rebuild_needed = (
+                int(metadata.get("train_years", 0)) != TRAIN_YEARS
+                or int(metadata.get("eval_years", 0)) != EVAL_YEARS
+            )
+        except Exception:
+            model_rebuild_needed = True
+
+    if model_rebuild_needed:
+        for path in (MODEL_PATH, SCALER_PATH, META_PATH, EVAL_PATH):
+            path.unlink(missing_ok=True)
+
         with st.status(
-            "Training the initial global LSTM…",
+            f"Training LSTM on {TRAIN_YEARS} years and reserving {EVAL_YEARS} years for evaluation…",
             expanded=True,
         ) as status:
-            frames = load_training_frames(
-                PROCESSED_DIR,
-                NIFTY50_SYMBOLS,
-            )
+            frames = load_training_frames(PROCESSED_DIR, NIFTY50_SYMBOLS)
             progress = st.progress(0)
             message = st.empty()
 
             def callback(epoch: int, loss: float) -> None:
                 progress.progress(min(epoch / 8, 1.0))
                 message.write(
-                    f"Epoch {epoch}/8 · training loss {loss:.5f}"
+                    f"Epoch {epoch}/8 · {TRAIN_YEARS}-year training loss {loss:.5f}"
                 )
 
             train_global_model(
@@ -195,12 +220,32 @@ def bootstrap_project() -> None:
             )
             progress.progress(1.0)
             status.update(
-                label="LSTM model trained",
+                label=f"LSTM trained on {TRAIN_YEARS} years",
+                state="complete",
+            )
+
+        with st.status(
+            f"Evaluating the latest {EVAL_YEARS} years…",
+            expanded=True,
+        ) as status:
+            frames = load_training_frames(PROCESSED_DIR, NIFTY50_SYMBOLS)
+            model, scaler, metadata = load_model(MODEL_DIR)
+            metrics = evaluate_global_model(
+                model,
+                scaler,
+                frames,
+                sequence_length=int(metadata["sequence_length"]),
+            )
+            EVAL_PATH.write_text(
+                json.dumps(metrics, indent=2),
+                encoding="utf-8",
+            )
+            status.update(
+                label="2-year holdout evaluation complete",
                 state="complete",
             )
 
         get_model_bundle.clear()
-
 
 def market_state() -> tuple[str, str]:
     now = datetime.now(ZoneInfo("Asia/Kolkata"))
@@ -493,8 +538,21 @@ with st.sidebar:
     st.write("Horizons: 1D / 5D / 10D")
     st.write("RL: LSTM-DQN module available")
 
+    if EVAL_PATH.exists():
+        try:
+            holdout = json.loads(EVAL_PATH.read_text(encoding="utf-8"))
+            st.markdown("### 24Y / 2Y evaluation")
+            st.write(f"5D MAE: {float(holdout['mae_5d']) * 100:.2f}%")
+            st.write(
+                f"Direction accuracy: "
+                f"{float(holdout['direction_accuracy']) * 100:.1f}%"
+            )
+            st.write(f"Holdout samples: {int(holdout['samples'])}")
+        except Exception:
+            pass
+
     if st.button("Rebuild model"):
-        for path in (MODEL_PATH, SCALER_PATH, META_PATH):
+        for path in (MODEL_PATH, SCALER_PATH, META_PATH, EVAL_PATH):
             path.unlink(missing_ok=True)
         get_model_bundle.clear()
         st.rerun()
