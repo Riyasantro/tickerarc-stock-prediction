@@ -116,9 +116,9 @@ def _daily_vector(row: pd.Series) -> np.ndarray:
 
 
 def _action_position(action: int, previous_position: int) -> int:
-    if action == RecurrentDQNAgent.__dict__.get("ACTION_SELL", 0):
+    if action == 0:
         return 0
-    if action == RecurrentDQNAgent.__dict__.get("ACTION_BUY", 2):
+    if action == 2:
         return 1
     return previous_position
 
@@ -484,13 +484,17 @@ class OnlineRLManager:
                 pending_ts = _parse_timestamp(pending["timestamp"])
                 future_start = pending_ts + timedelta(minutes=cadence_minutes)
                 future_index = int(
-                    np.searchsorted(
-                        bars.index.to_numpy(),
-                        future_start.to_datetime64(),
+                    bars.index.searchsorted(
+                        _parse_timestamp(future_start),
                         side="left",
                     )
                 )
-                if future_index < len(bars):
+                if pending_ts < bars.index[0]:
+                    state["pending"] = None
+                    state["position"] = 0
+                    pending = None
+                    start_index = 0
+                elif future_index < len(bars):
                     next_state = _pad_sequence(
                         state_matrix[: future_index + 1],
                         self.sequence_length,
@@ -537,6 +541,13 @@ class OnlineRLManager:
                             max(0, future_index - 59) : future_index + 1
                         ]
                     ]
+                elif pending is not None:
+                    state["state_history"] = state_matrix[-self.sequence_length :].tolist()
+                    self._save()
+                    return {
+                        "transitions": 0,
+                        "status": "Waiting for enough new bars to settle the saved RL action.",
+                    }
 
         # If the saved state is older than the provider's available window,
         # restart the replay from the earliest available bar.
@@ -638,9 +649,16 @@ class OnlineRLManager:
         state["state_history"] = state_matrix[-self.sequence_length :].tolist()
         state["last_timestamp"] = _timestamp_key(latest)
         state["last_price"] = _safe_float(bars.iloc[-1]["Close"])
-        state["last_session_volume"] = _safe_float(
-            bars["Volume"].iloc[-1]
+        latest_session = pd.Series(
+            bars["Volume"].astype(float).to_numpy(),
+            index=bars.index,
         )
+        latest_session_volume = float(
+            latest_session[
+                latest_session.index.date == latest_session.index[-1].date()
+            ].sum()
+        )
+        state["last_session_volume"] = latest_session_volume
         state["recent_prices"] = [
             _safe_float(value)
             for value in bars["Close"].tail(self.sequence_length)
@@ -765,7 +783,8 @@ class OnlineRLManager:
         price = _safe_float(quote.get("price"))
 
         if (
-            state.get("last_timestamp") is not None
+            state.get("pending") is not None
+            and state.get("last_timestamp") is not None
             and timestamp <= _parse_timestamp(state["last_timestamp"])
         ):
             action = int(
