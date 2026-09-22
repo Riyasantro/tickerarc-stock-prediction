@@ -108,6 +108,50 @@ def fetch_live_quotes(
     return result.sort_values("symbol").reset_index(drop=True)
 
 
+def fetch_intraday_history(
+    symbol: str,
+    period: str = "5d",
+    interval: str = "1m",
+) -> pd.DataFrame:
+    """Fetch intraday OHLCV bars for online RL catch-up/replay."""
+    frame = yf.download(
+        yahoo_symbol(symbol),
+        period=period,
+        interval=interval,
+        auto_adjust=False,
+        progress=False,
+        threads=False,
+    )
+    if frame.empty:
+        return pd.DataFrame(
+            columns=["timestamp", "Open", "High", "Low", "Close", "Volume"]
+        )
+
+    data = frame.copy()
+    if isinstance(data.columns, pd.MultiIndex):
+        data.columns = data.columns.get_level_values(0)
+
+    data = data.rename_axis("timestamp").reset_index()
+    data["timestamp"] = pd.to_datetime(data["timestamp"])
+    required = ["Open", "High", "Low", "Close", "Volume"]
+    missing = [column for column in required if column not in data.columns]
+    if missing:
+        raise ValueError(f"{symbol}: missing intraday fields {missing}")
+
+    data = data[["timestamp", *required]].copy()
+    data = data.dropna(subset=["Open", "High", "Low", "Close"])
+    data["Volume"] = pd.to_numeric(data["Volume"], errors="coerce").fillna(0.0)
+    for column in required[:4]:
+        data[column] = pd.to_numeric(data[column], errors="coerce")
+
+    return (
+        data.dropna(subset=["Open", "High", "Low", "Close"])
+        .sort_values("timestamp")
+        .drop_duplicates("timestamp")
+        .reset_index(drop=True)
+    )
+
+
 def fetch_daily_history(symbol: str, period: str = "5y") -> pd.DataFrame:
     """Fetch daily history for model input and technical analysis."""
     frame = yf.download(
