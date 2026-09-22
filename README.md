@@ -135,10 +135,10 @@ Replay Buffer + DQN update
 persist checkpoint + replay memory
 ```
 
-The online policy is separate from the supervised 24-year LSTM forecaster. The supervised LSTM produces the numerical 1D / 5D / 10D forecast, while LSTM-DQN learns a trading policy from realized interval rewards.
+The online policy is separate from the supervised 24-year LSTM forecaster. The supervised LSTM produces the numerical 1D / 5D / 10D forecast, while LSTM-DQN learns a trading policy from realized interval rewards. The offline RL training/evaluation scripts also use a 24-year training window and latest 2-year holdout.
 
 The online RL checkpoint and replay memory are stored locally under `models/` and are ignored by Git.
 
 When the application is restarted, TickerArc restores the online policy, optimizer state, replay memory and the selected-stock runtime state. It then replays available intraday history since the last saved decision before returning to the current live interval. On a first online-RL launch, the replay window starts with the most recent two calendar days.
 
-The catch-up window depends on the intraday history available from the provider. yfinance documents intraday history separately from daily history and notes that intraday requests cannot extend beyond the provider's available recent window. citeturn245173search0turn245173search1
+The catch-up window depends on the intraday history available from the provider. The online loop never fabricates missing intervals; it replays only the intraday bars that can actually be fetched.
