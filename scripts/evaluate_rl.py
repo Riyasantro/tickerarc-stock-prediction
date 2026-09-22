@@ -55,13 +55,22 @@ def evaluate(
         subset=feature_columns + ["return_1d"]
     ).reset_index(drop=True)
 
-    split = int(len(frame) * 0.8)
-    if split <= sequence_length:
-        raise ValueError("Dataset is too small for the configured sequence length.")
+    dates = pd.to_datetime(frame["Date"])
+    latest = dates.max()
+    eval_start = latest - pd.DateOffset(years=2)
+    eval_positions = np.flatnonzero(
+        dates.to_numpy() >= eval_start.to_datetime64()
+    )
+    if len(eval_positions) == 0:
+        raise ValueError("No latest 2-year holdout rows are available.")
 
-    # Keep only the minimum look-back context from train data, then evaluate
-    # strictly from the first held-out row onward.
-    test_frame = frame.iloc[split - sequence_length:].reset_index(drop=True)
+    eval_index = int(eval_positions[0])
+    if eval_index < sequence_length:
+        raise ValueError("Not enough pre-holdout context for the configured sequence length.")
+
+    # Keep exactly one sequence of look-back context, then evaluate only from
+    # the first row of the latest 2-year holdout onward.
+    test_frame = frame.iloc[eval_index - sequence_length:].reset_index(drop=True)
 
     env = TradingEnv(
         test_frame,
@@ -96,6 +105,9 @@ def evaluate(
 
     metrics = {
         "data_file": data_path,
+        "train_years": 24,
+        "eval_years": 2,
+        "evaluation_window": f"{eval_start.date()} to {latest.date()}",
         "checkpoint": checkpoint_path,
         "test_rows": int(len(strategy_returns)),
         "strategy_return": float(strategy_equity - 1.0),
