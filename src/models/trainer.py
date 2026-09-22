@@ -11,6 +11,7 @@ import joblib
 import numpy as np
 import pandas as pd
 import torch
+from sklearn.metrics import mean_absolute_error
 from sklearn.preprocessing import StandardScaler
 from torch import nn
 from torch.utils.data import DataLoader, Dataset
@@ -31,10 +32,16 @@ FEATURE_COLUMNS = [
     "rising_wedge_20", "falling_wedge_20", "bull_flag", "bear_flag",
     "candlestick_bullish_count", "candlestick_bearish_count",
     "candlestick_signal_score",
+    "regime_trend_50", "regime_trend_200",
+    "regime_volatility_ratio", "drawdown_60d",
+    "volume_pressure_20d", "return_skew_20d",
+    "regime_risk_on", "regime_risk_off",
 ]
 
 HORIZONS = (1, 5, 10)
 TRAIN_YEARS = 24
+VALIDATION_YEARS = 4
+FIT_YEARS = TRAIN_YEARS - VALIDATION_YEARS
 EVAL_YEARS = 2
 MAX_TARGET_HORIZON = max(HORIZONS)
 SEQUENCE_LENGTH_DEFAULT = 60
@@ -141,37 +148,64 @@ def _clean_feature_frame(frame: pd.DataFrame) -> pd.DataFrame:
         frame[FEATURE_COLUMNS]
         .replace([np.inf, -np.inf], np.nan)
         .ffill()
-        .bfill()
         .fillna(0.0)
     )
 
 
+def split_development_window(
+    frame: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, str]]:
+    """Split the 24-year development window into 20Y fit + 4Y validation."""
+    development, _, bounds = split_time_window(frame)
+    dates = pd.to_datetime(development["Date"])
+    validation_start = pd.Timestamp(bounds["eval_start"]) - pd.DateOffset(
+        years=VALIDATION_YEARS
+    )
+    fit = development[dates < validation_start].copy()
+    validation = development[dates >= validation_start].copy()
+    bounds = {
+        **bounds,
+        "fit_start": str(pd.to_datetime(fit["Date"]).min().date()) if not fit.empty else "",
+        "fit_end": str((validation_start - pd.Timedelta(days=1)).date()),
+        "validation_start": str(validation_start.date()),
+        "validation_end": str((pd.Timestamp(bounds["eval_start"]) - pd.Timedelta(days=1)).date()),
+    }
+    return fit, validation, bounds
+
+
 def _eligible_training_frame(frame: pd.DataFrame) -> pd.DataFrame:
-    train, _, _ = split_time_window(frame)
-    if len(train) <= SEQUENCE_LENGTH_DEFAULT + MAX_TARGET_HORIZON + 20:
+    fit, _, _ = split_development_window(frame)
+    if len(fit) <= SEQUENCE_LENGTH_DEFAULT + MAX_TARGET_HORIZON + 20:
         return pd.DataFrame()
-    # Do not allow a training target to cross into the holdout period.
-    return train.iloc[:-MAX_TARGET_HORIZON].copy()
+    return fit.iloc[:-MAX_TARGET_HORIZON].copy()
 
 
-def fit_time_split_scaler(
+def _clean_feature_frame(frame: pd.DataFrame) -> pd.DataFrame:
+    return (
+        frame[FEATURE_COLUMNS]
+        .replace([np.inf, -np.inf], np.nan)
+        .ffill()
+        .fillna(0.0)
+    )
+
+
+def fit_development_scaler(
     frames: dict[str, pd.DataFrame],
 ) -> tuple[StandardScaler, dict[str, dict[str, str]]]:
     chunks = []
     split_info: dict[str, dict[str, str]] = {}
 
     for symbol, frame in frames.items():
-        train = _eligible_training_frame(frame)
-        if train.empty:
+        fit, validation, bounds = split_development_window(frame)
+        if len(fit) <= SEQUENCE_LENGTH_DEFAULT + MAX_TARGET_HORIZON + 20:
             continue
-        chunks.append(_clean_feature_frame(train))
-        _, _, bounds = split_time_window(frame)
+        chunks.append(_clean_feature_frame(fit.iloc[:-MAX_TARGET_HORIZON]))
         split_info[symbol] = bounds
 
     if not chunks:
         raise ValueError(
-            f"No stocks contain enough history for {TRAIN_YEARS} training years "
-            f"plus {EVAL_YEARS} evaluation years."
+            f"No stocks contain enough history for {FIT_YEARS} fit years, "
+            f"{VALIDATION_YEARS} validation years and {EVAL_YEARS} evaluation years."
         )
 
     scaler = StandardScaler()
@@ -179,22 +213,41 @@ def fit_time_split_scaler(
     return scaler, split_info
 
 
-def build_time_split_samples(
+def fit_full_development_scaler(
     frames: dict[str, pd.DataFrame],
+) -> StandardScaler:
+    chunks = []
+    for frame in frames.values():
+        development, _, _ = split_time_window(frame)
+        if len(development) <= SEQUENCE_LENGTH_DEFAULT + MAX_TARGET_HORIZON + 20:
+            continue
+        chunks.append(_clean_feature_frame(development.iloc[:-MAX_TARGET_HORIZON]))
+
+    if not chunks:
+        raise ValueError("No valid 24-year development windows were produced.")
+
+    scaler = StandardScaler()
+    scaler.fit(pd.concat(chunks, ignore_index=True))
+    return scaler
+
+
+def _build_samples_for_range(
+    ranges: list[tuple[pd.DataFrame, int, int]],
     scaler: StandardScaler,
-    sequence_length: int = SEQUENCE_LENGTH_DEFAULT,
+    sequence_length: int,
 ) -> list[SequenceSample]:
     samples: list[SequenceSample] = []
 
-    for frame in frames.values():
-        train = _eligible_training_frame(frame)
-        if train.empty or len(train) <= sequence_length:
+    for data, start_index, end_index in ranges:
+        if len(data) <= sequence_length:
             continue
 
-        values = scaler.transform(_clean_feature_frame(train)).astype(np.float32)
+        safe_values = data.copy()
+        train_values = safe_values.iloc[:end_index]
+        values = scaler.transform(_clean_feature_frame(train_values)).astype(np.float32)
 
-        for end in range(sequence_length, len(train)):
-            row = train.iloc[end]
+        for end in range(max(sequence_length, start_index), end_index):
+            row = safe_values.iloc[end]
             target_cols = [
                 *(f"target_return_{h}d" for h in HORIZONS),
                 "target_volatility_5d",
@@ -216,6 +269,79 @@ def build_time_split_samples(
             )
 
     return samples
+
+
+def build_fit_samples(
+    frames: dict[str, pd.DataFrame],
+    scaler: StandardScaler,
+    sequence_length: int = SEQUENCE_LENGTH_DEFAULT,
+) -> list[SequenceSample]:
+    ranges = []
+    for frame in frames.values():
+        fit, _, _ = split_development_window(frame)
+        fit = fit.iloc[:-MAX_TARGET_HORIZON].copy()
+        ranges.append((fit, sequence_length, len(fit)))
+    return _build_samples_for_range(ranges, scaler, sequence_length)
+
+
+def build_validation_samples(
+    frames: dict[str, pd.DataFrame],
+    scaler: StandardScaler,
+    sequence_length: int = SEQUENCE_LENGTH_DEFAULT,
+) -> list[SequenceSample]:
+    ranges = []
+    for frame in frames.values():
+        fit, validation, _ = split_development_window(frame)
+        if validation.empty:
+            continue
+        combined = pd.concat(
+            [fit.tail(sequence_length), validation],
+            ignore_index=True,
+        )
+        target_end = len(combined)
+        ranges.append(
+            (combined, sequence_length, target_end)
+        )
+
+    # Validation uses only fitted scaler statistics. Validation targets never enter
+    # the training gradient updates.
+    samples = []
+    for data, start, end in ranges:
+        values = scaler.transform(_clean_feature_frame(data)).astype(np.float32)
+        for local_end in range(start, end):
+            row = data.iloc[local_end]
+            target_cols = [
+                *(f"target_return_{h}d" for h in HORIZONS),
+                "target_volatility_5d",
+                "direction_class",
+            ]
+            if not np.isfinite(row[target_cols].astype(float).to_numpy()).all():
+                continue
+            samples.append(
+                SequenceSample(
+                    x=values[local_end - sequence_length:local_end],
+                    y_return=np.array(
+                        [float(row[f"target_return_{h}d"]) for h in HORIZONS],
+                        dtype=np.float32,
+                    ),
+                    y_direction=int(row["direction_class"]),
+                    y_volatility=float(row["target_volatility_5d"]),
+                )
+            )
+    return samples
+
+
+def build_full_development_samples(
+    frames: dict[str, pd.DataFrame],
+    scaler: StandardScaler,
+    sequence_length: int = SEQUENCE_LENGTH_DEFAULT,
+) -> list[SequenceSample]:
+    ranges = []
+    for frame in frames.values():
+        development, _, _ = split_time_window(frame)
+        development = development.iloc[:-MAX_TARGET_HORIZON].copy()
+        ranges.append((development, sequence_length, len(development)))
+    return _build_samples_for_range(ranges, scaler, sequence_length)
 
 
 def build_samples(
@@ -271,69 +397,89 @@ def fit_scaler(
     return scaler
 
 
-def train_global_model(
-    frames: dict[str, pd.DataFrame],
-    output_dir: Path,
-    epochs: int = 8,
-    sequence_length: int = SEQUENCE_LENGTH_DEFAULT,
-    batch_size: int = 128,
-    hidden_size: int = 128,
-    lr: float = 1e-3,
-    device: str = "auto",
-    progress: Callable[[int, float], None] | None = None,
-) -> dict[str, object]:
-    """Train only on the 24-year window before the 2-year holdout."""
-    output_dir.mkdir(parents=True, exist_ok=True)
+def _loss_from_output(
+    output: dict[str, torch.Tensor],
+    yret: torch.Tensor,
+    ydir: torch.Tensor,
+    yvol: torch.Tensor,
+) -> torch.Tensor:
+    huber = nn.HuberLoss()
+    cross_entropy = nn.CrossEntropyLoss()
+    return (
+        huber(output["returns"], yret)
+        + 0.50 * cross_entropy(output["direction_logits"], ydir)
+        + 0.25 * huber(output["volatility"], yvol)
+    )
 
-    scaler, split_info = fit_time_split_scaler(frames)
-    samples = build_time_split_samples(frames, scaler, sequence_length)
+
+def _evaluate_samples(
+    model: MultiHorizonLSTM,
+    samples: list[SequenceSample],
+    device: torch.device,
+    batch_size: int = 512,
+) -> dict[str, float]:
     if not samples:
-        raise ValueError("No valid 24-year LSTM training windows were produced.")
+        raise ValueError("No validation samples were produced.")
 
+    loader = DataLoader(
+        WindowDataset(samples),
+        batch_size=batch_size,
+        shuffle=False,
+    )
+    model.eval()
+    total_loss = 0.0
+    count = 0
+    correct = 0
+
+    with torch.no_grad():
+        for xb, yret, ydir, yvol in loader:
+            xb = xb.to(device)
+            yret = yret.to(device)
+            ydir = ydir.to(device)
+            yvol = yvol.to(device)
+            output = model(xb)
+            loss = _loss_from_output(output, yret, ydir, yvol)
+            total_loss += float(loss.item()) * len(xb)
+            count += len(xb)
+            correct += int(
+                (torch.argmax(output["direction_logits"], dim=1) == ydir).sum().item()
+            )
+
+    return {
+        "loss": total_loss / max(count, 1),
+        "direction_accuracy": correct / max(count, 1),
+        "samples": float(count),
+    }
+
+
+def _fit_model(
+    model: MultiHorizonLSTM,
+    samples: list[SequenceSample],
+    epochs: int,
+    batch_size: int,
+    optimizer: torch.optim.Optimizer,
+    device: torch.device,
+    progress: Callable[[int, float], None] | None = None,
+) -> None:
     loader = DataLoader(
         WindowDataset(samples),
         batch_size=batch_size,
         shuffle=True,
         drop_last=False,
     )
-
-    device_obj = torch.device(
-        "cuda"
-        if device == "auto" and torch.cuda.is_available()
-        else "cpu"
-        if device == "auto"
-        else device
-    )
-
-    model = MultiHorizonLSTM(
-        input_size=len(FEATURE_COLUMNS),
-        hidden_size=hidden_size,
-    ).to(device_obj)
-
-    optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
-    huber = nn.HuberLoss()
-    cross_entropy = nn.CrossEntropyLoss()
-
-    best_loss = float("inf")
-    stale = 0
+    model.train()
 
     for epoch in range(epochs):
-        model.train()
         total_loss = 0.0
         count = 0
-
         for xb, yret, ydir, yvol in loader:
-            xb = xb.to(device_obj)
-            yret = yret.to(device_obj)
-            ydir = ydir.to(device_obj)
-            yvol = yvol.to(device_obj)
+            xb = xb.to(device)
+            yret = yret.to(device)
+            ydir = ydir.to(device)
+            yvol = yvol.to(device)
 
-            out = model(xb)
-            loss = (
-                huber(out["returns"], yret)
-                + 0.50 * cross_entropy(out["direction_logits"], ydir)
-                + 0.25 * huber(out["volatility"], yvol)
-            )
+            output = model(xb)
+            loss = _loss_from_output(output, yret, ydir, yvol)
 
             optimizer.zero_grad(set_to_none=True)
             loss.backward()
@@ -347,25 +493,129 @@ def train_global_model(
         if progress:
             progress(epoch + 1, epoch_loss)
 
-        if epoch_loss < best_loss:
-            best_loss = epoch_loss
+
+def train_global_model(
+    frames: dict[str, pd.DataFrame],
+    output_dir: Path,
+    epochs: int = 8,
+    sequence_length: int = SEQUENCE_LENGTH_DEFAULT,
+    batch_size: int = 128,
+    hidden_size: int = 128,
+    lr: float = 1e-3,
+    device: str = "auto",
+    progress: Callable[[int, float], None] | None = None,
+) -> dict[str, object]:
+    """Select training duration on 20Y fit + 4Y validation, then fit final model on 24Y."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    development_scaler, split_info = fit_development_scaler(frames)
+    fit_samples = build_fit_samples(frames, development_scaler, sequence_length)
+    validation_samples = build_validation_samples(
+        frames,
+        development_scaler,
+        sequence_length,
+    )
+    if not fit_samples or not validation_samples:
+        raise ValueError("No valid fit/validation LSTM windows were produced.")
+
+    device_obj = torch.device(
+        "cuda"
+        if device == "auto" and torch.cuda.is_available()
+        else "cpu"
+        if device == "auto"
+        else device
+    )
+
+    model = MultiHorizonLSTM(
+        input_size=len(FEATURE_COLUMNS),
+        hidden_size=hidden_size,
+    ).to(device_obj)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
+
+    best_loss = float("inf")
+    best_epoch = 1
+    patience = 2
+    stale = 0
+    best_state: dict[str, torch.Tensor] | None = None
+
+    for epoch in range(1, epochs + 1):
+        _fit_model(
+            model,
+            fit_samples,
+            epochs=1,
+            batch_size=batch_size,
+            optimizer=optimizer,
+            device=device_obj,
+        )
+        metrics = _evaluate_samples(
+            model,
+            validation_samples,
+            device_obj,
+        )
+
+        if progress:
+            progress(epoch, metrics["loss"])
+
+        if metrics["loss"] < best_loss:
+            best_loss = metrics["loss"]
+            best_epoch = epoch
             stale = 0
-            torch.save(model.state_dict(), output_dir / "tickerarc_global_lstm.pt")
+            best_state = {
+                key: value.detach().cpu().clone()
+                for key, value in model.state_dict().items()
+            }
         else:
             stale += 1
-            if stale >= 2:
+            if stale >= patience:
                 break
 
-    joblib.dump(scaler, output_dir / "tickerarc_scaler.joblib")
+    if best_state is None:
+        raise ValueError("Validation did not produce a checkpoint.")
+
+    # Refit on the complete 24-year development window using the selected epoch count.
+    full_scaler = fit_full_development_scaler(frames)
+    full_samples = build_full_development_samples(
+        frames,
+        full_scaler,
+        sequence_length,
+    )
+    final_model = MultiHorizonLSTM(
+        input_size=len(FEATURE_COLUMNS),
+        hidden_size=hidden_size,
+    ).to(device_obj)
+    final_optimizer = torch.optim.AdamW(
+        final_model.parameters(),
+        lr=lr,
+        weight_decay=1e-4,
+    )
+    _fit_model(
+        final_model,
+        full_samples,
+        epochs=best_epoch,
+        batch_size=batch_size,
+        optimizer=final_optimizer,
+        device=device_obj,
+    )
+
+    torch.save(
+        final_model.state_dict(),
+        output_dir / "tickerarc_global_lstm.pt",
+    )
+    joblib.dump(full_scaler, output_dir / "tickerarc_scaler.joblib")
+
     metadata = {
         "feature_columns": FEATURE_COLUMNS,
         "horizons": HORIZONS,
         "sequence_length": sequence_length,
         "hidden_size": hidden_size,
-        "train_loss": best_loss,
+        "train_loss": None,
         "device": str(device_obj),
         "train_years": TRAIN_YEARS,
+        "fit_years": FIT_YEARS,
+        "validation_years": VALIDATION_YEARS,
         "eval_years": EVAL_YEARS,
+        "selected_epochs": best_epoch,
+        "validation_loss": best_loss,
         "split_info": split_info,
         "training_stocks": sorted(split_info),
     }
@@ -382,7 +632,7 @@ def evaluate_global_model(
     frames: dict[str, pd.DataFrame],
     sequence_length: int = SEQUENCE_LENGTH_DEFAULT,
 ) -> dict[str, float | int | str]:
-    """Evaluate the frozen model on the latest two years only."""
+    """Evaluate the final 24-year development model on the latest 2-year test window."""
     model.eval()
     predictions: list[float] = []
     actuals: list[float] = []
@@ -425,12 +675,18 @@ def evaluate_global_model(
                 data.iloc[end - sequence_length + 1:end + 1]
             )
             scaled = scaler.transform(context).astype(np.float32)
-            x = torch.tensor(scaled[None, ...], dtype=torch.float32, device=device_obj)
+            x = torch.tensor(
+                scaled[None, ...],
+                dtype=torch.float32,
+                device=device_obj,
+            )
 
             with torch.no_grad():
                 out = model(x)
                 pred = float(out["returns"][0, 1].item())
-                direction = int(torch.argmax(out["direction_logits"], dim=1).item())
+                direction = int(
+                    torch.argmax(out["direction_logits"], dim=1).item()
+                )
 
             predictions.append(pred)
             actuals.append(float(row["target_return_5d"]))
@@ -447,7 +703,10 @@ def evaluate_global_model(
         raise ValueError("No valid 2-year holdout samples were produced.")
 
     return {
+        "model": "TickerArc Multi-Horizon LSTM v2",
         "train_years": TRAIN_YEARS,
+        "fit_years": FIT_YEARS,
+        "validation_years": VALIDATION_YEARS,
         "eval_years": EVAL_YEARS,
         "evaluation_window": f"{min(eval_starts)} to {max(eval_ends)}",
         "stocks_evaluated": stocks,
@@ -455,6 +714,7 @@ def evaluate_global_model(
         "mae_5d": float(mean_absolute_error(actuals, predictions)),
         "direction_accuracy": float(correct / max(total, 1)),
     }
+
 
 def load_model(
     output_dir: Path,
