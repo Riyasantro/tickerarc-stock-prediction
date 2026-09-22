@@ -12,3 +12,6 @@ data/cache/*
 models/*.pt
 models/*.pth
 models/*.onnx
+models/*.joblib
+models/*_meta.json
+models/*_eval.json
