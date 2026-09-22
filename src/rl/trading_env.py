@@ -1,4 +1,4 @@
-"""Simple causal long/flat/short trading environment."""
+"""Simple causal long-only trading environment."""
 
 from __future__ import annotations
 
@@ -41,6 +41,7 @@ class TradingEnv:
         self.sequence_length = sequence_length
         self.transaction_cost = transaction_cost
         self._cursor = sequence_length
+        self.position = 0
 
         values = self.data[feature_columns].replace([np.inf, -np.inf], np.nan)
         self.values = values.ffill().bfill().fillna(0.0).to_numpy(dtype=np.float32)
@@ -50,6 +51,7 @@ class TradingEnv:
         self._cursor = self.sequence_length if start is None else max(
             self.sequence_length, start
         )
+        self.position = 0
         return self._observation()
 
     def _observation(self) -> np.ndarray:
@@ -60,13 +62,16 @@ class TradingEnv:
         if action not in (self.ACTION_SELL, self.ACTION_HOLD, self.ACTION_BUY):
             raise ValueError("Action must be 0 (sell), 1 (hold), or 2 (buy).")
 
-        position = {
-            self.ACTION_SELL: -1,
-            self.ACTION_HOLD: 0,
-            self.ACTION_BUY: 1,
-        }[action]
+        previous_position = self.position
+        if action == self.ACTION_SELL:
+            self.position = 0
+        elif action == self.ACTION_BUY:
+            self.position = 1
+        # Hold keeps the existing position.
+
         next_return = float(self.returns[self._cursor])
-        reward = position * next_return - self.transaction_cost * abs(position)
+        changed = int(previous_position != self.position)
+        reward = self.position * next_return - self.transaction_cost * changed
 
         self._cursor += 1
         done = self._cursor >= len(self.data) - 1
@@ -76,8 +81,9 @@ class TradingEnv:
             reward=float(reward),
             done=done,
             info={
-                "position": position,
+                "position": self.position,
                 "next_return": next_return,
-                "equity_return": position * next_return,
+                "equity_return": self.position * next_return,
+                "position_changed": changed,
             },
         )
