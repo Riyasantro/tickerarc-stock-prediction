@@ -25,6 +25,11 @@ class MultiHorizonLSTM(nn.Module):
         )
         self.norm = nn.LayerNorm(hidden_size)
         self.dropout = nn.Dropout(dropout)
+        self.attention = nn.Sequential(
+            nn.Linear(hidden_size, 64),
+            nn.Tanh(),
+            nn.Linear(64, 1),
+        )
         self.shared = nn.Sequential(
             nn.Linear(hidden_size, 128),
             nn.GELU(),
@@ -39,7 +44,16 @@ class MultiHorizonLSTM(nn.Module):
 
     def forward(self, x: torch.Tensor) -> dict[str, torch.Tensor]:
         seq, _ = self.lstm(x)
-        latent = self.dropout(self.norm(seq[:, -1, :]))
+        attention_scores = self.attention(seq).squeeze(-1)
+        attention_weights = torch.softmax(
+            attention_scores,
+            dim=1,
+        ).unsqueeze(-1)
+        context = torch.sum(
+            seq * attention_weights,
+            dim=1,
+        )
+        latent = self.dropout(self.norm(context))
         shared = self.shared(latent)
         return {
             "returns": self.return_head(shared),
