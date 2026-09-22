@@ -298,7 +298,10 @@ def build_validation_samples(
             [fit.tail(sequence_length), validation],
             ignore_index=True,
         )
-        target_end = len(combined)
+        target_end = max(
+            sequence_length,
+            len(combined) - MAX_TARGET_HORIZON,
+        )
         ranges.append(
             (combined, sequence_length, target_end)
         )
