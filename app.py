@@ -30,6 +30,7 @@ from src.features.chart_patterns import add_chart_pattern_features
 from src.features.talib_features import add_all_candlestick_patterns
 from src.models.trainer import (
     EVAL_YEARS,
+    FEATURE_COLUMNS,
     TRAIN_YEARS,
     evaluate_global_model,
     load_model,
