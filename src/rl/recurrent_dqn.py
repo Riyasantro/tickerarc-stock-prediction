@@ -75,8 +75,12 @@ class RecurrentDQNAgent:
         tensor = torch.as_tensor(
             state, dtype=torch.float32, device=self.device
         ).unsqueeze(0)
+        was_training = self.policy.training
+        self.policy.eval()
         with torch.no_grad():
             q_values = self.policy(tensor)
+        if was_training:
+            self.policy.train()
         return int(q_values.argmax(dim=1).item())
 
     def update(self, buffer: ReplayBuffer) -> float | None:
