@@ -2,113 +2,104 @@
 
 **Stock Analysis and Prediction System**
 
-TickerArc is a stock market analysis and prediction project focused on combining market data, technical features, and deep learning to study future stock movement.
+TickerArc combines market data, technical analysis, deep learning and an explicit analysis-agent layer to study future stock movement.
 
-## Project scope
+## Core capabilities
 
-- Historical market data pipeline
-- Price, volume, momentum, and volatility features
-- Activity and volume-based stock classification
-- LSTM-based future movement prediction
-- Candlestick and chart-pattern analysis
-- Clean black-and-white dashboard
-- Agent-assisted stock analysis
+- NIFTY 50 historical data ingestion
+- Pandas + TA-Lib feature engineering
+- Full TA-Lib CDL candlestick feature family
+- Heuristic chart-structure detection
+- Multi-horizon LSTM returns for 1D / 5D / 10D
+- Direction probabilities and 5-day volatility output
+- Activity, low-volume and low-attention scanners
+- Heuristic 0–100 potential score
+- LSTM-DQN reinforcement-learning policy
+- Expanding walk-forward evaluation
+- Black-and-white Streamlit dashboard
+- 1-minute or 3-minute live/near-live refresh
+- Single entry point: `app.py`
 
-## Development plan
+## Run the complete application
 
-The project is being built incrementally over five days:
-
-1. Data collection and feature pipeline
-2. LSTM prediction model
-3. Market intelligence and agent tools
-4. Dashboard
-5. Testing, evaluation, and documentation
-
-## Day 1 foundation
-
-Day 1 establishes the reusable market-data and feature pipeline:
-
-- NIFTY 50 stock universe in `config/universe.py`
-- Yahoo Finance OHLCV downloader in `src/data/download.py`
-- Reproducible feature pipeline in `src/data/pipeline.py`
-
-## Day 2 feature engineering and model foundation
-
-Day 2 extends the pipeline with:
-
-- TA-Lib technical indicators
-- The complete TA-Lib CDL candlestick-pattern family loaded dynamically
-- Heuristic support/resistance, breakouts, reversals, triangles, wedges, and flag features
-- A multi-task PyTorch LSTM backbone for return, direction, and volatility outputs
-- An LSTM-DQN reinforcement-learning policy with Sell, Hold, and Buy actions
-- A causal trading environment with transaction-cost penalties
-- Replay-buffer training and target-network updates
-- Unit tests for feature generation, model shapes, and environment behavior
-
-Chart-pattern detection is deliberately implemented as reproducible heuristics rather than presented as a universal or exhaustive list, because chart-pattern taxonomies vary.
-
-## Day 2 training
-
-After generating a processed parquet file locally:
+Clone the repository and install dependencies:
 
 ```bash
-python -m src.data.pipeline
-python scripts/train_rl.py --data data/processed/reliance.parquet
-```
+git clone https://github.com/Riyasantro/tickerarc-stock-prediction.git
+cd tickerarc-stock-prediction
 
-The RL checkpoint is written to:
-
-```
-models/tickerarc_lstm_dqn.pt
-```
-
-Generated datasets and model checkpoints are excluded from Git history by default.
-
-## Running Day 2 locally
-
-Create and activate a virtual environment:
-
-```bash
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 ```
 
-TA-Lib is a native dependency. On Linux, install the TA-Lib C library first if the Python package cannot find it, then install the Python wrapper from `requirements.txt`. See the official TA-Lib installation instructions.
-
-Verify the environment:
+Start TickerArc:
 
 ```bash
-python -c "import torch; print('torch:', torch.__version__); print('cuda:', torch.cuda.is_available())"
-python -c "import talib; print('TA-Lib:', talib.__version__)"
-pytest -q
+streamlit run app.py
 ```
 
-Generate the processed features:
+On first launch, the application:
 
-```bash
-python -m src.data.pipeline
+1. Downloads available NIFTY 50 daily history.
+2. Builds the TA-Lib and chart-pattern feature dataset.
+3. Trains a global multi-stock LSTM if a checkpoint is not present.
+4. Loads the model and starts the dashboard.
+
+After initialization, the dashboard fetches the live/near-live market layer on the selected 1-minute or 3-minute interval and runs inference without retraining the model.
+
+## Dashboard
+
+The app shows:
+
+- High activity stocks
+- Low activity stocks
+- Low relative-volume stocks
+- Low-attention / popularity-proxy stocks
+- Current price and session change
+- 1D / 5D / 10D modeled returns
+- Up / neutral / down probabilities
+- 5D volatility estimate
+- Potential score
+- Candlestick pattern detections
+- Chart-pattern detections
+- Support and resistance overlays
+- Analysis-agent summary
+- On-demand expanding walk-forward evaluation
+
+## Modeling
+
+The production prediction model is a multi-task LSTM:
+
+```text
+60-day feature sequence
+        |
+      LSTM
+        |
+   Shared latent
+   /     |      \
+returns direction volatility
+  |        |
+1D/5D/10D  3-class probability
 ```
 
-Train the LSTM-DQN policy:
+The reinforcement-learning component is an LSTM-DQN policy with Sell/Hold/Buy actions. It is kept separate from the supervised return forecaster so the UI can show both the numerical forecast and the learned policy.
 
-```bash
-python scripts/train_rl.py --data data/processed/reliance.parquet --episodes 20
-```
+The potential score is a heuristic aggregation of model probability, expected return, activity, volume and detected pattern signals. It is not a guaranteed price target.
 
-Evaluate only on the held-out final 20% of the time series:
+## Live data note
 
-```bash
-python scripts/evaluate_rl.py \
-  --data data/processed/reliance.parquet \
-  --checkpoint models/tickerarc_lstm_dqn.pt
-```
+The app uses a free public market-data layer. Refreshing the Streamlit interface every minute does not guarantee a new exchange tick every minute; the dashboard reports the provider timestamp and falls back between 1-minute and 5-minute intraday data when necessary.
 
-The evaluation writes a JSON report to:
+## Evaluation
 
-```
-models/tickerarc_lstm_dqn_eval.json
-```
+The selected-stock panel includes an on-demand expanding walk-forward evaluation. Each fold trains on earlier observations and is scored on later observations only, preserving time order.
 
-Key evaluation fields include strategy return, buy-and-hold return, maximum drawdown, action counts, and win rate.
+The evaluation reports:
+
+- 5-day return MAE
+- Direction accuracy
+- Number of out-of-sample samples
+
+Model checkpoints and downloaded market data are intentionally ignored by Git.
