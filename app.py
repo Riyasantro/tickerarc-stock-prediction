@@ -24,7 +24,7 @@ from config.universe import NIFTY50_SYMBOLS
 from src.analysis.agent import TickerArcAgent
 from src.analysis.scoring import build_activity_scores, potential_score
 from src.data.download import download_universe
-from src.data.live import fetch_live_quotes
+from src.data.live import fetch_intraday_history, fetch_live_quotes
 from src.data.pipeline import PROCESSED_DIR, process_downloaded_files
 from src.features.chart_patterns import add_chart_pattern_features
 from src.features.talib_features import add_all_candlestick_patterns
@@ -38,6 +38,7 @@ from src.models.trainer import (
     train_global_model,
 )
 from src.models.walk_forward import walk_forward_evaluate
+from src.rl.online_loop import OnlineRLManager
 
 ROOT = Path(__file__).resolve().parent
 MODEL_DIR = ROOT / "models"
@@ -129,6 +130,11 @@ def get_model_bundle():
     if not (MODEL_PATH.exists() and SCALER_PATH.exists() and META_PATH.exists()):
         return None
     return load_model(MODEL_DIR)
+
+
+@st.cache_resource(show_spinner=False)
+def get_online_rl_manager() -> OnlineRLManager:
+    return OnlineRLManager(MODEL_DIR)
 
 
 def bootstrap_project() -> None:
@@ -537,6 +543,7 @@ with st.sidebar:
     st.write("Forecast: Multi-Horizon LSTM v1")
     st.write("Horizons: 1D / 5D / 10D")
     st.write("RL: LSTM-DQN module available")
+    st.write("Online RL: learns from each live interval")
 
     if EVAL_PATH.exists():
         try:
@@ -625,6 +632,51 @@ def live_dashboard() -> None:
         low_attention,
         "Low attention / popularity proxy",
     )
+
+    online_result = None
+    catchup_info = None
+    selected_history = histories.get(selected_symbol)
+    selected_live_rows = live[live["symbol"] == selected_symbol]
+
+    if selected_history is not None and not selected_live_rows.empty:
+        selected_quote = selected_live_rows.iloc[0].to_dict()
+        online_manager = get_online_rl_manager()
+
+        try:
+            if online_manager.needs_catchup(
+                selected_symbol,
+                selected_quote["timestamp"],
+                refresh_minutes,
+            ):
+                with st.spinner(
+                    "Online RL: replaying missed intraday data…"
+                ):
+                    intraday = fetch_intraday_history(
+                        selected_symbol,
+                        period="5d",
+                        interval="1m",
+                    )
+                    catchup_info = online_manager.catch_up(
+                        selected_symbol,
+                        intraday,
+                        selected_history,
+                        refresh_minutes,
+                    )
+
+            # Historical catch-up can run while the market is closed, but a
+            # fresh action is created only during an open session.
+            if status == "OPEN":
+                online_result = online_manager.observe_live(
+                    selected_symbol,
+                    selected_history.iloc[-1],
+                    selected_quote,
+                    refresh_minutes,
+                )
+        except Exception as exc:
+            catchup_info = {
+                "transitions": 0,
+                "status": f"Online RL unavailable: {exc}",
+            }
 
     st.markdown(
         '<div class="section-title">Selected stock</div>',
@@ -727,6 +779,50 @@ def live_dashboard() -> None:
         st.markdown("**Chart patterns**")
         for item in patterns["chart_hits"][:8] or ["None detected"]:
             st.write(f"• {item}")
+
+    st.markdown("**Online Reinforcement Learning**")
+    rl1, rl2, rl3, rl4 = st.columns(4)
+
+    if online_result is not None:
+        rl1.metric("RL action", online_result.action_name)
+        rl2.metric(
+            "Position",
+            "LONG" if online_result.position else "FLAT",
+        )
+        rl3.metric(
+            "Interval reward",
+            (
+                f"{online_result.reward * 100:+.4f}%"
+                if online_result.reward is not None
+                else "Waiting"
+            ),
+        )
+        rl4.metric(
+            "RL updates",
+            f"{online_result.steps:,}",
+        )
+        st.caption(
+            f"{online_result.status} "
+            f"Replay memory: {online_result.replay_size:,}."
+        )
+    else:
+        rl1.metric("RL action", "WAIT")
+        rl2.metric("Position", "FLAT")
+        rl3.metric("Interval reward", "Waiting")
+        rl4.metric("RL updates", "—")
+
+    if catchup_info is not None:
+        st.caption(
+            f"Catch-up: {catchup_info.get('status', 'completed')} "
+            f"({int(catchup_info.get('transitions', 0)):,} transitions)"
+        )
+
+    st.caption(
+        "The online RL loop records an action at the current interval, "
+        "waits for the next 1- or 3-minute interval, converts the realized "
+        "price move into a reward, updates the LSTM-DQN, and persists its "
+        "checkpoint/replay memory so learning continues after restart."
+    )
 
     st.markdown("**Analysis Agent**")
     st.write(result.summary)
