@@ -11,11 +11,15 @@ TickerArc combines market data, technical analysis, deep learning and an explici
 - Full TA-Lib CDL candlestick feature family
 - Heuristic chart-structure detection
 - Multi-horizon LSTM returns for 1D / 5D / 10D
+- Temporal-attention pooling over the LSTM sequence
+- Causal trend, volatility, drawdown and volume-pressure regime features
 - Direction probabilities and 5-day volatility output
 - Activity, low-volume and low-attention scanners
 - Heuristic 0–100 potential score
 - LSTM-DQN reinforcement-learning policy
-- 24-year training / 2-year chronological holdout evaluation
+- 20-year fit + 4-year validation + 2-year untouched chronological test
+- Final model refit on the complete 24-year development window after validation-based epoch selection
+- Baseline benchmarking against zero-return and Ridge models on the same 2-year test
 - Expanding walk-forward evaluation
 - Black-and-white Streamlit dashboard
 - 1-minute or 3-minute live/near-live refresh
@@ -73,7 +77,7 @@ The app shows:
 
 ## Modeling
 
-The production prediction model is a multi-task LSTM:
+The production prediction model is a multi-task LSTM with temporal attention pooling:
 
 ```text
 60-day feature sequence
@@ -90,6 +94,29 @@ returns direction volatility
 The reinforcement-learning component is an LSTM-DQN policy with Sell/Hold/Buy actions. It is kept separate from the supervised return forecaster so the UI can show both the numerical forecast and the learned policy.
 
 The potential score is a heuristic aggregation of model probability, expected return, activity, volume and detected pattern signals. It is not a guaranteed price target.
+
+### Model selection and test protocol
+
+```text
+maximum history
+      |
+      +--> 20Y fit
+      |       |
+      |   validation
+      |      4Y
+      |       |
+      +-------+
+              |
+       select training duration
+              |
+       refit on complete 24Y
+              |
+       frozen final model
+              |
+        latest 2Y test
+```
+
+The validation window is used only for training-duration selection. The latest 2 years remain untouched until final evaluation. Baselines use the same final test window so the LSTM result has a reference point.
 
 ## Live data note
 
