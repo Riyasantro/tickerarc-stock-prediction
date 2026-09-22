@@ -37,6 +37,34 @@ class ReplayBuffer:
     def __len__(self) -> int:
         return len(self.buffer)
 
+    def state_dict(self, limit: int | None = None) -> list[dict[str, object]]:
+        items = list(self.buffer)
+        if limit is not None:
+            items = items[-limit:]
+        return [
+            {
+                "state": item.state.astype(np.float32),
+                "action": int(item.action),
+                "reward": float(item.reward),
+                "next_state": item.next_state.astype(np.float32),
+                "done": bool(item.done),
+            }
+            for item in items
+        ]
+
+    def load_state_dict(self, items: list[dict[str, object]]) -> None:
+        self.buffer.clear()
+        for item in items:
+            self.add(
+                Transition(
+                    state=np.asarray(item["state"], dtype=np.float32),
+                    action=int(item["action"]),
+                    reward=float(item["reward"]),
+                    next_state=np.asarray(item["next_state"], dtype=np.float32),
+                    done=bool(item["done"]),
+                )
+            )
+
 
 class RecurrentDQNAgent:
     """DQN agent whose Q-function uses an LSTM sequence encoder."""
@@ -132,6 +160,69 @@ class RecurrentDQNAgent:
             self.target.load_state_dict(self.policy.state_dict())
 
         return float(loss.item())
+
+    def save_checkpoint(
+        self,
+        path: str | "Path",
+        buffer: ReplayBuffer | None = None,
+        replay_limit: int = 1000,
+    ) -> None:
+        from pathlib import Path
+
+        output = Path(path)
+        output.parent.mkdir(parents=True, exist_ok=True)
+
+        torch.save(
+            {
+                "model_state_dict": self.policy.state_dict(),
+                "target_state_dict": self.target.state_dict(),
+                "optimizer_state_dict": self.optimizer.state_dict(),
+                "steps": self.steps,
+                "input_size": int(self.policy.encoder.lstm.input_size),
+                "hidden_size": int(self.policy.encoder.lstm.hidden_size),
+                "gamma": self.gamma,
+                "batch_size": self.batch_size,
+                "target_update": self.target_update,
+                "replay": (
+                    buffer.state_dict(limit=replay_limit)
+                    if buffer is not None
+                    else []
+                ),
+            },
+            output,
+        )
+
+    def load_checkpoint(
+        self,
+        path: str | "Path",
+        buffer: ReplayBuffer | None = None,
+    ) -> None:
+        from pathlib import Path
+
+        checkpoint = torch.load(
+            Path(path),
+            map_location=self.device,
+            weights_only=False,
+        )
+        self.policy.load_state_dict(checkpoint["model_state_dict"])
+        self.target.load_state_dict(
+            checkpoint.get(
+                "target_state_dict",
+                checkpoint["model_state_dict"],
+            )
+        )
+        if "optimizer_state_dict" in checkpoint:
+            self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+            for state in self.optimizer.state.values():
+                for key, value in state.items():
+                    if torch.is_tensor(value):
+                        state[key] = value.to(self.device)
+        self.steps = int(checkpoint.get("steps", 0))
+
+        if buffer is not None:
+            buffer.load_state_dict(
+                checkpoint.get("replay", [])
+            )
 
 
 def train_episode(
