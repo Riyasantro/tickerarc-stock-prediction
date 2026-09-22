@@ -37,6 +37,7 @@ from src.models.trainer import (
     predict_latest,
     train_global_model,
 )
+from src.models.benchmarks import evaluate_baselines
 from src.models.walk_forward import walk_forward_evaluate
 from src.rl.online_loop import OnlineRLManager
 
@@ -146,7 +147,7 @@ def bootstrap_project() -> None:
         try:
             sample = pd.read_parquet(
                 processed_files[0],
-                columns=["candlestick_signal_score"],
+                columns=["candlestick_signal_score", "regime_risk_on"],
             )
             feature_refresh_needed = sample.empty
         except Exception:
@@ -242,6 +243,7 @@ def bootstrap_project() -> None:
                 frames,
                 sequence_length=int(metadata["sequence_length"]),
             )
+            metrics["baselines"] = evaluate_baselines(frames)
             EVAL_PATH.write_text(
                 json.dumps(metrics, indent=2),
                 encoding="utf-8",
@@ -252,6 +254,7 @@ def bootstrap_project() -> None:
             )
 
         get_model_bundle.clear()
+        get_online_rl_manager.clear()
 
 def market_state() -> tuple[str, str]:
     now = datetime.now(ZoneInfo("Asia/Kolkata"))
@@ -540,7 +543,7 @@ with st.sidebar:
 
     st.markdown("---")
     st.markdown("### Model")
-    st.write("Forecast: Multi-Horizon LSTM v1")
+    st.write("Forecast: Multi-Horizon LSTM v2")
     st.write("Horizons: 1D / 5D / 10D")
     st.write("RL: LSTM-DQN module available")
     st.write("Online RL: learns from each live interval")
@@ -555,6 +558,15 @@ with st.sidebar:
                 f"{float(holdout['direction_accuracy']) * 100:.1f}%"
             )
             st.write(f"Holdout samples: {int(holdout['samples'])}")
+            if "baselines" in holdout:
+                st.markdown("**Baselines (same 2Y holdout)**")
+                for name, values in holdout["baselines"].items():
+                    st.write(
+                        f"{name}: MAE "
+                        f"{float(values['mae_5d']) * 100:.2f}% · "
+                        f"direction "
+                        f"{float(values['direction_accuracy']) * 100:.1f}%"
+                    )
         except Exception:
             pass
 
