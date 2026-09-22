@@ -42,6 +42,11 @@ def test_build_features_shape_and_columns():
         "volume_ratio_20",
         "volatility_20d",
         "momentum_20d",
+        "regime_trend_50",
+        "regime_volatility_ratio",
+        "drawdown_60d",
+        "regime_risk_on",
+        "regime_risk_off",
     }
     assert expected.issubset(result.columns)
 
