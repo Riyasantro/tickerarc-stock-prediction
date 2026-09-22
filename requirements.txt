@@ -6,7 +6,6 @@ scikit-learn
 matplotlib
 plotly
 torch
-streamlit
 pytest
 ta-lib
 streamlit>=1.37
