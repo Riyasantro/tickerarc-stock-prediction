@@ -15,3 +15,6 @@ models/*.onnx
 models/*.joblib
 models/*_meta.json
 models/*_eval.json
+
+# Persistent online RL runtime state
+models/tickerarc_online_rl_state.json
