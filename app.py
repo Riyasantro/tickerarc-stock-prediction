@@ -194,6 +194,8 @@ def bootstrap_project() -> None:
             model_rebuild_needed = (
                 int(metadata.get("train_years", 0)) != TRAIN_YEARS
                 or int(metadata.get("eval_years", 0)) != EVAL_YEARS
+                or int(metadata.get("validation_years", 0)) != 4
+                or metadata.get("architecture") != "LSTM + temporal attention pooling + multi-task heads"
             )
         except Exception:
             model_rebuild_needed = True
