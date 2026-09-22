@@ -15,6 +15,7 @@ TickerArc combines market data, technical analysis, deep learning and an explici
 - Activity, low-volume and low-attention scanners
 - Heuristic 0–100 potential score
 - LSTM-DQN reinforcement-learning policy
+- 24-year training / 2-year chronological holdout evaluation
 - Expanding walk-forward evaluation
 - Black-and-white Streamlit dashboard
 - 1-minute or 3-minute live/near-live refresh
@@ -42,10 +43,12 @@ streamlit run app.py
 
 On first launch, the application:
 
-1. Downloads available NIFTY 50 daily history.
+1. Downloads maximum available NIFTY 50 daily history.
 2. Builds the TA-Lib and chart-pattern feature dataset.
-3. Trains a global multi-stock LSTM if a checkpoint is not present.
-4. Loads the model and starts the dashboard.
+3. Uses a chronological 24-year training window and reserves the latest 2 years as a holdout set.
+4. Trains the global multi-stock LSTM without using holdout targets.
+5. Evaluates the frozen model on the 2-year holdout.
+6. Loads the model and starts the dashboard.
 
 After initialization, the dashboard fetches the live/near-live market layer on the selected 1-minute or 3-minute interval and runs inference without retraining the model.
 
@@ -96,10 +99,17 @@ The app uses a free public market-data layer. Refreshing the Streamlit interface
 
 The selected-stock panel includes an on-demand expanding walk-forward evaluation. Each fold trains on earlier observations and is scored on later observations only, preserving time order.
 
-The evaluation reports:
+The primary evaluation reports:
 
 - 5-day return MAE
 - Direction accuracy
-- Number of out-of-sample samples
+- Number of 2-year out-of-sample samples
+
+The live dashboard then runs inference from the latest completed daily feature sequence using the trained LSTM. The 2-year holdout is never used as a training label.
 
 Model checkpoints and downloaded market data are intentionally ignored by Git.
+
+
+### History availability note
+
+The 24-year training / 2-year holdout split is applied stock-by-stock using each symbol's maximum available history. Stocks that do not have enough history for the full window are excluded from the exact holdout training set, while the dashboard can still display their available market data.
