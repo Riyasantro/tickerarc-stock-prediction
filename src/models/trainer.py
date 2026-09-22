@@ -611,6 +611,7 @@ def train_global_model(
         "horizons": HORIZONS,
         "sequence_length": sequence_length,
         "hidden_size": hidden_size,
+        "architecture": "LSTM + temporal attention pooling + multi-task heads",
         "train_loss": None,
         "device": str(device_obj),
         "train_years": TRAIN_YEARS,
@@ -800,5 +801,5 @@ def predict_latest(
         "up_probability": float(probabilities[2]),
         "direction": direction_names[direction_index],
         "volatility_5d": volatility,
-        "model_name": "TickerArc Multi-Horizon LSTM v1",
+        "model_name": "TickerArc Multi-Horizon LSTM v2",
     }
