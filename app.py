@@ -489,9 +489,9 @@ with st.sidebar:
 
     st.markdown("---")
     st.markdown("### Model")
-    st.write("Multi-Horizon LSTM v1")
+    st.write("Forecast: Multi-Horizon LSTM v1")
     st.write("Horizons: 1D / 5D / 10D")
-    st.write("RL policy: LSTM-DQN")
+    st.write("RL: LSTM-DQN module available")
 
     if st.button("Rebuild model"):
         for path in (MODEL_PATH, SCALER_PATH, META_PATH):
