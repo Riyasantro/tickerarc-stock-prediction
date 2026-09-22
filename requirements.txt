@@ -9,3 +9,5 @@ torch
 streamlit
 pytest
 ta-lib
+streamlit>=1.37
+joblib
