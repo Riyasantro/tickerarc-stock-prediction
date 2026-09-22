@@ -94,11 +94,14 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
 
 @st.cache_data(ttl=45, show_spinner=False)
 def get_live_data(symbols: tuple[str, ...]) -> pd.DataFrame:
-    """Use 1-minute data first, then 5-minute data if the provider fails."""
+    """Use 1-minute data first, then 5-minute data if needed."""
     try:
-        return fetch_live_quotes(symbols, interval="1m", lookback="5d")
+        result = fetch_live_quotes(symbols, interval="1m", lookback="5d")
+        if not result.empty:
+            return result
     except Exception:
-        return fetch_live_quotes(symbols, interval="5m", lookback="5d")
+        pass
+    return fetch_live_quotes(symbols, interval="5m", lookback="5d")
 
 
 @st.cache_data(ttl=900, show_spinner=False)
@@ -123,17 +126,35 @@ def get_model_bundle():
 
 
 def bootstrap_project() -> None:
-    """Fetch reproducible history, build features, and train once if needed."""
-    if not any(PROCESSED_DIR.glob("*.parquet")):
-        with st.status(
-            "Downloading NIFTY 50 historical data…",
-            expanded=True,
-        ) as status:
-            download_universe(NIFTY50_SYMBOLS, period="5y", interval="1d")
-            status.update(
-                label="Historical data downloaded",
-                state="complete",
+    """Fetch history, rebuild Day 2 features when needed, and train once."""
+    processed_files = list(PROCESSED_DIR.glob("*.parquet"))
+    feature_refresh_needed = not processed_files
+
+    if processed_files:
+        try:
+            sample = pd.read_parquet(
+                processed_files[0],
+                columns=["candlestick_signal_score"],
             )
+            feature_refresh_needed = sample.empty
+        except Exception:
+            feature_refresh_needed = True
+
+    if feature_refresh_needed:
+        if not any((ROOT / "data" / "raw").glob("*.parquet")):
+            with st.status(
+                "Downloading NIFTY 50 historical data…",
+                expanded=True,
+            ) as status:
+                download_universe(
+                    NIFTY50_SYMBOLS,
+                    period="5y",
+                    interval="1d",
+                )
+                status.update(
+                    label="Historical data downloaded",
+                    state="complete",
+                )
 
         with st.status(
             "Building technical and pattern features…",
@@ -345,14 +366,38 @@ def add_potential_scores(
     if out.empty:
         return out
 
-    pattern_scores = {}
+    pattern_scores: dict[str, float] = {}
     for symbol, frame in histories.items():
-        try:
-            pattern_scores[symbol] = pattern_summary(frame)["pattern_score"]
-        except Exception:
-            pattern_scores[symbol] = 0.0
+        latest = frame.iloc[-1]
+        candle_signal = float(
+            latest.get("candlestick_signal_score", 0.0)
+        )
+        chart_signal = 0.0
+        for column, direction in [
+            ("breakout_20", 1),
+            ("breakdown_20", -1),
+            ("double_top_30", -1),
+            ("double_bottom_30", 1),
+            ("head_shoulders_30", -1),
+            ("inverse_head_shoulders_30", 1),
+            ("ascending_triangle_20", 1),
+            ("descending_triangle_20", -1),
+            ("rising_wedge_20", -1),
+            ("falling_wedge_20", 1),
+            ("bull_flag", 1),
+            ("bear_flag", -1),
+        ]:
+            chart_signal += float(
+                latest.get(column, 0.0)
+            ) * direction
 
-    out["pattern_score"] = out["symbol"].map(pattern_scores).fillna(0.0)
+        pattern_scores[symbol] = float(
+            np.tanh((candle_signal / 5.0) + (chart_signal / 3.0))
+        )
+
+    out["pattern_score"] = (
+        out["symbol"].map(pattern_scores).fillna(0.0)
+    )
     out["potential"] = out.apply(
         lambda row: potential_score(
             float(row.get("up_probability", 0.0)),
