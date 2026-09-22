@@ -17,6 +17,7 @@ TickerArc combines market data, technical analysis, deep learning and an explici
 - Activity, low-volume and low-attention scanners
 - Heuristic 0–100 potential score
 - LSTM-DQN reinforcement-learning policy
+- Persistent online RL feedback and restart/catch-up learning
 - 20-year fit + 4-year validation + 2-year untouched chronological test
 - Final model refit on the complete 24-year development window after validation-based epoch selection
 - Baseline benchmarking against zero-return and Ridge models on the same 2-year test
@@ -54,7 +55,7 @@ On first launch, the application:
 5. Evaluates the frozen model on the 2-year holdout.
 6. Loads the model and starts the dashboard.
 
-After initialization, the dashboard fetches the live/near-live market layer on the selected 1-minute or 3-minute interval and runs inference without retraining the model.
+After initialization, the dashboard fetches the live/near-live market layer on the selected 1-minute or 3-minute interval. The supervised forecast model stays frozen; the separate online LSTM-DQN policy learns from newly realized interval rewards.
 
 ## Dashboard
 
