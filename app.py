@@ -216,7 +216,7 @@ def bootstrap_project() -> None:
             def callback(epoch: int, loss: float) -> None:
                 progress.progress(min(epoch / 8, 1.0))
                 message.write(
-                    f"Epoch {epoch}/8 · {TRAIN_YEARS}-year training loss {loss:.5f}"
+                    f"Epoch {epoch}/8 · validation loss {loss:.5f}"
                 )
 
             train_global_model(
@@ -230,7 +230,7 @@ def bootstrap_project() -> None:
             )
             progress.progress(1.0)
             status.update(
-                label=f"LSTM trained on {TRAIN_YEARS} years",
+                label=f"LSTM selected with 20Y fit + 4Y validation, then refit on {TRAIN_YEARS} years",
                 state="complete",
             )
 
