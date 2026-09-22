@@ -460,9 +460,8 @@ class OnlineRLManager:
         if last_timestamp is None:
             start_time = latest - timedelta(days=FIRST_RUN_TRAIN_DAYS)
             start_index = int(
-                np.searchsorted(
-                    bars.index.to_numpy(),
-                    np.datetime64(start_time.to_datetime64()),
+                bars.index.searchsorted(
+                    _parse_timestamp(start_time),
                     side="left",
                 )
             )
@@ -470,9 +469,8 @@ class OnlineRLManager:
             pending = None
         else:
             start_index = int(
-                np.searchsorted(
-                    bars.index.to_numpy(),
-                    _parse_timestamp(last_timestamp).to_datetime64(),
+                bars.index.searchsorted(
+                    _parse_timestamp(last_timestamp),
                     side="left",
                 )
             )
