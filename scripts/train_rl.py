@@ -9,6 +9,8 @@ import numpy as np
 import pandas as pd
 import torch
 
+from src.models.trainer import EVAL_YEARS, TRAIN_YEARS
+
 from src.rl.recurrent_dqn import RecurrentDQNAgent, ReplayBuffer, train_episode
 from src.rl.trading_env import TradingEnv
 
@@ -36,11 +38,19 @@ def main() -> None:
         raise ValueError("No expected model features found in the processed dataframe.")
 
     frame = frame.dropna(subset=feature_columns + ["return_1d"]).reset_index(drop=True)
-    split = int(len(frame) * 0.8)
-    if split <= args.sequence_length + 1:
-        raise ValueError("Training split is too small for the selected sequence length.")
+    dates = pd.to_datetime(frame["Date"])
+    latest = dates.max()
+    eval_start = latest - pd.DateOffset(years=EVAL_YEARS)
+    train_start = eval_start - pd.DateOffset(years=TRAIN_YEARS)
 
-    train = frame.iloc[:split].reset_index(drop=True)
+    train = frame[
+        (dates >= train_start) & (dates < eval_start)
+    ].reset_index(drop=True)
+    if len(train) <= args.sequence_length + 1:
+        raise ValueError(
+            f"Need at least {TRAIN_YEARS} years of training data "
+            f"before the latest {EVAL_YEARS}-year holdout."
+        )
     env = TradingEnv(
         train,
         feature_columns=feature_columns,
@@ -71,6 +81,11 @@ def main() -> None:
             "feature_columns": feature_columns,
             "sequence_length": args.sequence_length,
             "episodes": args.episodes,
+            "train_years": TRAIN_YEARS,
+            "eval_years": EVAL_YEARS,
+            "train_start": str(train_start.date()),
+            "eval_start": str(eval_start.date()),
+            "eval_end": str(latest.date()),
         },
         output,
     )
