@@ -34,6 +34,10 @@ FEATURE_COLUMNS = [
 ]
 
 HORIZONS = (1, 5, 10)
+TRAIN_YEARS = 24
+EVAL_YEARS = 2
+MAX_TARGET_HORIZON = max(HORIZONS)
+SEQUENCE_LENGTH_DEFAULT = 60
 
 
 @dataclass
@@ -109,22 +113,123 @@ def load_training_frames(
     return frames
 
 
+def split_time_window(
+    frame: pd.DataFrame,
+    train_years: int = TRAIN_YEARS,
+    eval_years: int = EVAL_YEARS,
+) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, str]]:
+    """Split one stock into a chronological 24-year train window and latest 2-year holdout."""
+    data = prepare_frame(frame)
+    dates = pd.to_datetime(data["Date"])
+    latest = dates.max()
+    eval_start = latest - pd.DateOffset(years=eval_years)
+    train_start = eval_start - pd.DateOffset(years=train_years)
+
+    train = data[(dates >= train_start) & (dates < eval_start)].copy()
+    evaluation = data[dates >= eval_start].copy()
+    bounds = {
+        "train_start": str(train_start.date()),
+        "train_end": str((eval_start - pd.Timedelta(days=1)).date()),
+        "eval_start": str(eval_start.date()),
+        "eval_end": str(latest.date()),
+    }
+    return train, evaluation, bounds
+
+
+def _clean_feature_frame(frame: pd.DataFrame) -> pd.DataFrame:
+    return (
+        frame[FEATURE_COLUMNS]
+        .replace([np.inf, -np.inf], np.nan)
+        .ffill()
+        .bfill()
+        .fillna(0.0)
+    )
+
+
+def _eligible_training_frame(frame: pd.DataFrame) -> pd.DataFrame:
+    train, _, _ = split_time_window(frame)
+    if len(train) <= SEQUENCE_LENGTH_DEFAULT + MAX_TARGET_HORIZON + 20:
+        return pd.DataFrame()
+    # Do not allow a training target to cross into the holdout period.
+    return train.iloc[:-MAX_TARGET_HORIZON].copy()
+
+
+def fit_time_split_scaler(
+    frames: dict[str, pd.DataFrame],
+) -> tuple[StandardScaler, dict[str, dict[str, str]]]:
+    chunks = []
+    split_info: dict[str, dict[str, str]] = {}
+
+    for symbol, frame in frames.items():
+        train = _eligible_training_frame(frame)
+        if train.empty:
+            continue
+        chunks.append(_clean_feature_frame(train))
+        _, _, bounds = split_time_window(frame)
+        split_info[symbol] = bounds
+
+    if not chunks:
+        raise ValueError(
+            f"No stocks contain enough history for {TRAIN_YEARS} training years "
+            f"plus {EVAL_YEARS} evaluation years."
+        )
+
+    scaler = StandardScaler()
+    scaler.fit(pd.concat(chunks, ignore_index=True))
+    return scaler, split_info
+
+
+def build_time_split_samples(
+    frames: dict[str, pd.DataFrame],
+    scaler: StandardScaler,
+    sequence_length: int = SEQUENCE_LENGTH_DEFAULT,
+) -> list[SequenceSample]:
+    samples: list[SequenceSample] = []
+
+    for frame in frames.values():
+        train = _eligible_training_frame(frame)
+        if train.empty or len(train) <= sequence_length:
+            continue
+
+        values = scaler.transform(_clean_feature_frame(train)).astype(np.float32)
+
+        for end in range(sequence_length, len(train)):
+            row = train.iloc[end]
+            target_cols = [
+                *(f"target_return_{h}d" for h in HORIZONS),
+                "target_volatility_5d",
+                "direction_class",
+            ]
+            if not np.isfinite(row[target_cols].astype(float).to_numpy()).all():
+                continue
+
+            samples.append(
+                SequenceSample(
+                    x=values[end - sequence_length:end],
+                    y_return=np.array(
+                        [float(row[f"target_return_{h}d"]) for h in HORIZONS],
+                        dtype=np.float32,
+                    ),
+                    y_direction=int(row["direction_class"]),
+                    y_volatility=float(row["target_volatility_5d"]),
+                )
+            )
+
+    return samples
+
+
 def build_samples(
     frames: dict[str, pd.DataFrame],
     scaler: StandardScaler,
     sequence_length: int,
     train_fraction: float = 0.8,
 ) -> list[SequenceSample]:
+    """Legacy fractional splitter retained for compatibility."""
     samples: list[SequenceSample] = []
 
     for frame in frames.values():
         split = int(len(frame) * train_fraction)
-        values = scaler.transform(
-            frame[FEATURE_COLUMNS].replace([np.inf, -np.inf], np.nan)
-            .ffill()
-            .bfill()
-            .fillna(0.0)
-        ).astype(np.float32)
+        values = scaler.transform(_clean_feature_frame(frame)).astype(np.float32)
 
         for end in range(sequence_length, split):
             row = frame.iloc[end]
@@ -150,7 +255,6 @@ def build_samples(
 
     return samples
 
-
 def fit_scaler(
     frames: dict[str, pd.DataFrame], train_fraction: float = 0.8
 ) -> StandardScaler:
@@ -171,19 +275,20 @@ def train_global_model(
     frames: dict[str, pd.DataFrame],
     output_dir: Path,
     epochs: int = 8,
-    sequence_length: int = 60,
+    sequence_length: int = SEQUENCE_LENGTH_DEFAULT,
     batch_size: int = 128,
     hidden_size: int = 128,
     lr: float = 1e-3,
     device: str = "auto",
     progress: Callable[[int, float], None] | None = None,
 ) -> dict[str, object]:
+    """Train only on the 24-year window before the 2-year holdout."""
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    scaler = fit_scaler(frames)
-    samples = build_samples(frames, scaler, sequence_length)
+    scaler, split_info = fit_time_split_scaler(frames)
+    samples = build_time_split_samples(frames, scaler, sequence_length)
     if not samples:
-        raise ValueError("No valid LSTM training windows were produced.")
+        raise ValueError("No valid 24-year LSTM training windows were produced.")
 
     loader = DataLoader(
         WindowDataset(samples),
@@ -245,10 +350,7 @@ def train_global_model(
         if epoch_loss < best_loss:
             best_loss = epoch_loss
             stale = 0
-            torch.save(
-                model.state_dict(),
-                output_dir / "tickerarc_global_lstm.pt",
-            )
+            torch.save(model.state_dict(), output_dir / "tickerarc_global_lstm.pt")
         else:
             stale += 1
             if stale >= 2:
@@ -262,6 +364,10 @@ def train_global_model(
         "hidden_size": hidden_size,
         "train_loss": best_loss,
         "device": str(device_obj),
+        "train_years": TRAIN_YEARS,
+        "eval_years": EVAL_YEARS,
+        "split_info": split_info,
+        "training_stocks": sorted(split_info),
     }
     (output_dir / "tickerarc_model_meta.json").write_text(
         json.dumps(metadata, indent=2),
@@ -269,6 +375,86 @@ def train_global_model(
     )
     return metadata
 
+
+def evaluate_global_model(
+    model: MultiHorizonLSTM,
+    scaler: StandardScaler,
+    frames: dict[str, pd.DataFrame],
+    sequence_length: int = SEQUENCE_LENGTH_DEFAULT,
+) -> dict[str, float | int | str]:
+    """Evaluate the frozen model on the latest two years only."""
+    model.eval()
+    predictions: list[float] = []
+    actuals: list[float] = []
+    correct = 0
+    total = 0
+    stocks = 0
+    eval_starts: list[str] = []
+    eval_ends: list[str] = []
+    device_obj = next(model.parameters()).device
+
+    for frame in frames.values():
+        data = prepare_frame(frame)
+        _, evaluation, bounds = split_time_window(data)
+        if evaluation.empty:
+            continue
+
+        eval_start = pd.Timestamp(bounds["eval_start"])
+        dates = pd.to_datetime(data["Date"])
+        eval_positions = np.flatnonzero(
+            dates.to_numpy() >= eval_start.to_datetime64()
+        )
+        if len(eval_positions) == 0:
+            continue
+
+        symbol_samples = 0
+        for end in eval_positions:
+            if end + MAX_TARGET_HORIZON >= len(data) or end + 1 < sequence_length:
+                continue
+
+            row = data.iloc[end]
+            target_cols = [
+                *(f"target_return_{h}d" for h in HORIZONS),
+                "target_volatility_5d",
+                "direction_class",
+            ]
+            if not np.isfinite(row[target_cols].astype(float).to_numpy()).all():
+                continue
+
+            context = _clean_feature_frame(
+                data.iloc[end - sequence_length + 1:end + 1]
+            )
+            scaled = scaler.transform(context).astype(np.float32)
+            x = torch.tensor(scaled[None, ...], dtype=torch.float32, device=device_obj)
+
+            with torch.no_grad():
+                out = model(x)
+                pred = float(out["returns"][0, 1].item())
+                direction = int(torch.argmax(out["direction_logits"], dim=1).item())
+
+            predictions.append(pred)
+            actuals.append(float(row["target_return_5d"]))
+            correct += int(direction == int(row["direction_class"]))
+            total += 1
+            symbol_samples += 1
+
+        if symbol_samples:
+            stocks += 1
+            eval_starts.append(bounds["eval_start"])
+            eval_ends.append(bounds["eval_end"])
+
+    if not predictions:
+        raise ValueError("No valid 2-year holdout samples were produced.")
+
+    return {
+        "train_years": TRAIN_YEARS,
+        "eval_years": EVAL_YEARS,
+        "evaluation_window": f"{min(eval_starts)} to {max(eval_ends)}",
+        "stocks_evaluated": stocks,
+        "samples": total,
+        "mae_5d": float(mean_absolute_error(actuals, predictions)),
+        "direction_accuracy": float(correct / max(total, 1)),
+    }
 
 def load_model(
     output_dir: Path,
