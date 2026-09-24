@@ -189,6 +189,19 @@ Also note that files generated while an app is running on Community Cloud are no
 
 Community Cloud apps without traffic hibernate after 12 hours, so the 1/3-minute online learning loop should not be treated as a continuously running background worker on the free service.
 
+## Stage 1 interaction layer
+
+Stage 1 adds the trading-terminal navigation model:
+
+- Category navigation for Overview, Most Active, Popular, Model Signals, Potential and Low Attention.
+- Every stock in a category is an interactive instrument card.
+- Clicking a stock opens its dedicated instrument workspace.
+- A Market button returns from the instrument workspace to the selected market category.
+- The sidebar instrument selector uses the same navigation state, so selecting a stock from either the sidebar or a market card opens the same workspace.
+
+Stage 1 intentionally leaves the existing chart and model presentation intact. Pattern annotations and the final candlestick chart engine are part of the next upgrade stage.
+
+
 ## Professional trading terminal layout
 
 ```text
