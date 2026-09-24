@@ -22,7 +22,7 @@ TickerArc combines market data, technical analysis, deep learning and an explici
 - Final model refit on the complete 24-year development window after validation-based epoch selection
 - Baseline benchmarking against zero-return and Ridge models on the same 2-year test
 - Expanding walk-forward evaluation
-- Black-and-white Streamlit dashboard
+- Dark-green professional trading-terminal Streamlit UI with interactive Plotly charts
 - 1-minute or 3-minute live/near-live refresh
 - Single entry point: `app.py`
 
@@ -61,10 +61,12 @@ After initialization, the dashboard fetches the live/near-live market layer on t
 
 The app shows:
 
-- High activity stocks
-- Low activity stocks
-- Low relative-volume stocks
-- Low-attention / popularity-proxy stocks
+- Most active stocks
+- Popular / attention-proxy stocks
+- Model buy-signal stocks
+- Potential leaders
+- Low-attention watchlist shown as a separate category
+- Dedicated instrument workspace for each selected NIFTY 50 stock
 - Current price and session change
 - 1D / 5D / 10D modeled returns
 - Up / neutral / down probabilities
@@ -72,8 +74,11 @@ The app shows:
 - Potential score
 - Candlestick pattern detections
 - Chart-pattern detections
-- Support and resistance overlays
+- Support/resistance overlays, EMA 20/50, volume and RSI panels
+- Interactive zoom/scroll trading chart with selectable 1M/3M/6M/1Y/3Y/5Y/MAX ranges
+- Model probability distribution chart
 - Analysis-agent summary
+- Model performance charts against the zero-return and Ridge baselines
 - On-demand expanding walk-forward evaluation
 
 ## Modeling
@@ -183,3 +188,30 @@ The current full application performs substantial startup work: maximum-history 
 Also note that files generated while an app is running on Community Cloud are not guaranteed to persist across user sessions. Therefore the local online-RL checkpoint/replay files are suitable for local development but are not a reliable persistence layer for the deployed app. For production-style persistent online RL, store checkpoints/replay/runtime state in an external persistent database or object store and load them on startup.
 
 Community Cloud apps without traffic hibernate after 12 hours, so the 1/3-minute online learning loop should not be treated as a continuously running background worker on the free service.
+
+## Professional trading terminal layout
+
+```text
+Market header / live breadth
+        |
+Most Active   | Popular / Attention
+Model Signals | Potential Leaders
+Low Attention Watch
+        |
+Selected Instrument
+        |
+Candles + EMA20/EMA50 + Support/Resistance
+Volume panel
+RSI panel
+        |
+Overview | Signals | Model Performance | Online RL
+```
+
+The Streamlit interface is organized as a market workspace rather than a raw data table.
+The sidebar is reserved for workspace controls, live market findings and system health. It does not repeat basic model descriptions.
+
+## Production deployment boundary
+
+The application code is structured for production-style operation: cached market reads, frozen supervised inference after model creation, explicit holdout evaluation, isolated online RL state, provider timestamps, health indicators and failure handling.
+
+The remaining production infrastructure requirement is persistent external storage for online-RL checkpoints/replay/runtime state when deployed on an ephemeral hosting platform. The application should not assume that local files inside such a service are durable across restarts. A persistent object store or database is required for durable cloud RL state.
