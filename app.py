@@ -716,7 +716,8 @@ def render_selected_instrument(
     q1.metric("Price", f"₹{float(row['price']):,.2f}", f"{float(row['change_pct']):+.2f}%")
     q2.metric("1D model", f"{float(row['return_1d']) * 100:+.2f}%")
     q3.metric("5D model", f"{float(row['return_5d']) * 100:+.2f}%")
-    q4.metric("10D model", f"{float(row['return_10d']) * 100:+.2f}%")    q5.metric("Potential", f"{float(result.potential):.0f}/100")
+    q4.metric("10D model", f"{float(row['return_10d']) * 100:+.2f}%")
+    q5.metric("Potential", f"{float(result.potential):.0f}/100")
 
     rc1, rc2 = st.columns([2.3, 1])
     with rc1:
