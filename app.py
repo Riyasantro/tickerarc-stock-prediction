@@ -1098,53 +1098,34 @@ def render_selected_instrument(
         }
 
     with rl_tab:
+        st.markdown("#### Strategy signal")
         r1, r2, r3, r4 = st.columns(4)
         if online_result is not None:
-            r1.metric("RL action", online_result.action_name)
+            r1.metric("Action", online_result.action_name)
             r2.metric("Position", "LONG" if online_result.position else "FLAT")
             r3.metric(
-                "Interval reward",
-                f"{online_result.reward * 100:+.4f}%"
+                "Interval move",
+                f"{online_result.reward * 100:+.3f}%"
                 if online_result.reward is not None
                 else "Waiting",
             )
-            r4.metric("RL updates", f"{online_result.steps:,}")
-            st.caption(
-                f"{online_result.status} · replay memory {online_result.replay_size:,}"
-            )
+            r4.metric("Status", "Active")
         else:
-            r1.metric("RL action", "WAIT")
+            r1.metric("Action", "WAIT")
             r2.metric("Position", "FLAT")
-            r3.metric("Interval reward", "Waiting")
-            r4.metric("RL updates", "—")
-        if catchup_info is not None:
+            r3.metric("Interval move", "Waiting")
+            r4.metric("Status", "Inactive")
+
+        if catchup_info is not None and catchup_info.get("transitions", 0):
             st.caption(
-                f"Catch-up: {catchup_info.get('status', 'completed')} "
-                f"({int(catchup_info.get('transitions', 0)):,} transitions)"
+                f"Strategy state synchronized from {int(catchup_info['transitions']):,} available market intervals."
             )
 
         st.markdown(
-            '<div class="disclaimer">The online LSTM-DQN policy learns from realized live intervals and persists its checkpoint/replay state locally. The supervised forecast model remains separate and frozen during live inference.</div>',
+            '<div class="disclaimer">The strategy signal is a separate short-horizon policy layer. '
+            'It is not the same as the multi-horizon forecast and does not guarantee future performance.</div>',
             unsafe_allow_html=True,
         )
-
-        with st.expander("Advanced walk-forward evaluation"):
-            st.write(
-                "Expanding chronological folds retrain on earlier observations and score later observations only."
-            )
-            folds = st.slider("Folds", 2, 4, 3)
-            epochs = st.slider("Epochs per fold", 1, 5, 2)
-            if st.button("Run walk-forward evaluation"):
-                with st.spinner("Running chronological folds…"):
-                    try:
-                        metrics = walk_forward_evaluate(
-                            history,
-                            folds=folds,
-                            train_epochs=epochs,
-                        )
-                        st.json(metrics)
-                    except Exception as exc:
-                        st.error(str(exc))
 
 
 @st.fragment(run_every="1min")
