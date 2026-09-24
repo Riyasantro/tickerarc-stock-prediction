@@ -962,7 +962,6 @@ def render_tv_topbar() -> None:
             horizontal=True,
             label_visibility="collapsed",
         )
-    st.session_state.market_section = selected
 
 def render_watchlist_panel(combined: pd.DataFrame) -> None:
     st.markdown('<div class="watchlist-panel">', unsafe_allow_html=True)
