@@ -7,6 +7,6 @@ matplotlib
 plotly
 torch
 pytest
-ta-lib
-streamlit>=1.37
+ta-lib==0.6.8
+streamlit==1.64.0
 joblib
