@@ -177,8 +177,7 @@ div[data-baseweb="select"] > div {
 .terminal-bar {
     display:flex;
     justify-content:space-between;
-    align-items:center;    background:#080d0a;
-    border:1px solid var(--border);
+    align-items:center;    background:#080d0a;    border:1px solid var(--border);
     border-radius:12px;
     padding:10px 14px;
     margin-bottom:12px;
@@ -268,6 +267,7 @@ section.main > div { max-width:100% !important; padding-left:22px !important; pa
 .watch-item-price { text-align:right;color:#d2d8d4;font-size:.67rem; }
 .watch-item-change { text-align:right;font-size:.67rem; }
 .watch-item button { padding:0 !important;background:transparent !important;color:#e4e9e5 !important;border:0 !important;text-align:left !important;box-shadow:none !important; }
+.watchlist-panel .stButton > button { background:transparent !important;color:#e4e9e5 !important;border:0 !important;padding:0 !important;box-shadow:none !important;text-align:left !important;font-size:.69rem !important;font-weight:800 !important; }
 .watch-detail { padding:12px;border-top:1px solid #202320; }
 .watch-detail-symbol { font-weight:900;font-size:.93rem; }
 .watch-detail-price { font-weight:900;font-size:1.55rem;margin-top:2px; }
@@ -357,8 +357,7 @@ def bootstrap_project() -> None:
         MODEL_PATH.exists() and SCALER_PATH.exists() and META_PATH.exists()
     )
     if not model_rebuild_needed:
-        try:
-            metadata = json.loads(META_PATH.read_text(encoding="utf-8"))
+        try:            metadata = json.loads(META_PATH.read_text(encoding="utf-8"))
             model_rebuild_needed = (
                 int(metadata.get("train_years", 0)) != TRAIN_YEARS
                 or int(metadata.get("eval_years", 0)) != EVAL_YEARS
@@ -537,8 +536,7 @@ def render_stock_cards(
                     f'<div class="stock-price">₹{price:,.2f}</div>'
                     f'<div class="{"stock-green" if change >= 0 else "stock-red"}">{change_text} session</div>'
                     f'<div style="margin-top:6px">{mini_candlestick_svg(histories.get(symbol))}</div>'
-                    f'<div class="stock-meta">Up {up_text} · Potential {potential_text}</div>'
-                    f'<div class="stock-meta">Activity {activity_text} · Rel Vol {volume_text}</div>'
+                    f'<div class="stock-meta">Up {up_text} · Potential {potential_text}</div>'                    f'<div class="stock-meta">Activity {activity_text} · Rel Vol {volume_text}</div>'
                     f'</div>',
                     unsafe_allow_html=True,
                 )
@@ -717,8 +715,7 @@ def render_selected_instrument(
     q1.metric("Price", f"₹{float(row['price']):,.2f}", f"{float(row['change_pct']):+.2f}%")
     q2.metric("1D model", f"{float(row['return_1d']) * 100:+.2f}%")
     q3.metric("5D model", f"{float(row['return_5d']) * 100:+.2f}%")
-    q4.metric("10D model", f"{float(row['return_10d']) * 100:+.2f}%")
-    q5.metric("Potential", f"{float(result.potential):.0f}/100")
+    q4.metric("10D model", f"{float(row['return_10d']) * 100:+.2f}%")    q5.metric("Potential", f"{float(result.potential):.0f}/100")
 
     rc1, rc2 = st.columns([2.3, 1])
     with rc1:
@@ -897,8 +894,7 @@ def render_selected_instrument(
         )
 
 
-def _market_proxy_series(histories: dict[str, pd.DataFrame], range_name: str = "1Y") -> pd.DataFrame:
-    series = []
+def _market_proxy_series(histories: dict[str, pd.DataFrame], range_name: str = "1Y") -> pd.DataFrame:    series = []
     for symbol, frame in histories.items():
         if frame is None or frame.empty or not {"Date", "Close"}.issubset(frame.columns):
             continue
@@ -1077,8 +1073,7 @@ def render_market_home(combined: pd.DataFrame, histories: dict[str, pd.DataFrame
         title_col, range_col = st.columns([3.4, 1.1])
         with title_col:
             st.markdown('<div class="tv-panel-title">Market overview</div>', unsafe_allow_html=True)
-        with range_col:
-            selected_range = st.selectbox(
+        with range_col:            selected_range = st.selectbox(
                 "Range", ["1M","3M","6M","1Y","3Y","5Y","ALL"],
                 index=["1M","3M","6M","1Y","3Y","5Y","ALL"].index(st.session_state.get("market_range","1Y")),
                 key="market_range",
