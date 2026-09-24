@@ -666,7 +666,7 @@ def render_stock_cards(
                     f'<div class="{"stock-green" if change >= 0 else "stock-red"}">'
                     f'{change_text} session</div>'
                     f'<div style="margin-top:6px">'
-                    f'{_sparkline_svg(histories.get(symbol))}</div>'
+                    f'{mini_candlestick_svg(histories.get(symbol))}</div>'
                     f'<div class="stock-meta">Up {up_text} · Potential {potential_text}</div>'
                     f'<div class="stock-meta">Activity {activity_text} · Rel Vol {volume_text}</div>'
                     f'</div>',
