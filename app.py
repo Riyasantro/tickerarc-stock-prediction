@@ -53,6 +53,7 @@ SCALER_PATH = MODEL_DIR / "tickerarc_scaler.joblib"
 META_PATH = MODEL_DIR / "tickerarc_model_meta.json"
 EVAL_PATH = MODEL_DIR / "tickerarc_holdout_eval.json"
 HISTORY_MARKER = ROOT / "data" / "cache" / ".tickerarc_max_history"
+LIVE_REFRESH_MINUTES = 1
 
 
 st.set_page_config(
@@ -1163,7 +1164,7 @@ def live_dashboard() -> None:
             row=stock_live.iloc[0],
             history=selected_history,
             status=status,
-            refresh_minutes=refresh_minutes,
+            refresh_minutes=LIVE_REFRESH_MINUTES,
             chart_range=st.session_state.chart_range,
             show_ema=st.session_state.show_ema,
             show_sr=st.session_state.show_sr,
