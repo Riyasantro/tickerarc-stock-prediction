@@ -297,7 +297,8 @@ def get_live_data(symbols: tuple[str, ...]) -> pd.DataFrame:
         if not result.empty:
             return result
     except Exception:
-        pass    return fetch_live_quotes(symbols, interval="5m", lookback="5d")
+        pass
+    return fetch_live_quotes(symbols, interval="5m", lookback="5d")
 
 @st.cache_data(ttl=900, show_spinner=False)
 def load_processed_histories(symbols: tuple[str, ...]) -> dict[str, pd.DataFrame]:
