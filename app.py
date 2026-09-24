@@ -763,7 +763,11 @@ def render_selected_instrument(
     if focus_title:
         fc1, fc2 = st.columns([5, 1])
         with fc1:
-            st.markdown(f'<div class="focused-label">Focused on chart · {focus_title}</div>', unsafe_allow_html=True)        with fc2:
+            st.markdown(
+                f'<div class="focused-label">Focused on chart · {focus_title}</div>',
+                unsafe_allow_html=True,
+            )
+        with fc2:
             st.button("Clear focus", key=f"clear_focus_{selected_symbol}", on_click=_clear_chart_focus, use_container_width=True)
 
     with st.container():
