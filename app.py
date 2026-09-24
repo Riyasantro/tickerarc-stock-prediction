@@ -147,8 +147,7 @@ div[data-baseweb="select"] > div {
 .stock-card {
     background: var(--panel);
     border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 12px;
+    border-radius: 12px;    padding: 12px;
     min-height: 128px;
     transition: border-color .2s ease, transform .2s ease;
 }
@@ -297,8 +296,7 @@ def get_live_data(symbols: tuple[str, ...]) -> pd.DataFrame:
     try:
         result = fetch_live_quotes(symbols, interval="1m", lookback="5d")
         if not result.empty:
-            return result
-    except Exception:
+            return result    except Exception:
         pass
     return fetch_live_quotes(symbols, interval="5m", lookback="5d")
 
@@ -447,8 +445,7 @@ def pattern_summary(frame: pd.DataFrame) -> dict[str, object]:
         ("head_shoulders_30", "head and shoulders", -1),
         ("inverse_head_shoulders_30", "inverse head and shoulders", 1),
         ("ascending_triangle_20", "ascending triangle", 1),
-        ("descending_triangle_20", "descending triangle", -1),
-        ("symmetrical_triangle_20", "symmetrical triangle", 0),
+        ("descending_triangle_20", "descending triangle", -1),        ("symmetrical_triangle_20", "symmetrical triangle", 0),
         ("rising_wedge_20", "rising wedge", -1),
         ("falling_wedge_20", "falling wedge", 1),
         ("bull_flag", "bull flag", 1),
@@ -597,8 +594,7 @@ def render_model_performance() -> None:
     if not EVAL_PATH.exists():
         st.info("Holdout evaluation is not available yet.")
         return
-    try:
-        metrics = json.loads(EVAL_PATH.read_text(encoding="utf-8"))
+    try:        metrics = json.loads(EVAL_PATH.read_text(encoding="utf-8"))
     except Exception:
         st.warning("Holdout evaluation could not be read.")
         return
@@ -747,8 +743,7 @@ def render_selected_instrument(
     st.plotly_chart(
         make_focused_trading_chart(
             history,
-            selected_symbol,
-            selected_range,
+            selected_symbol,            selected_range,
             show_ema=local_ema,
             show_sr=local_sr,
             show_patterns=local_patterns,
@@ -899,8 +894,8 @@ def render_selected_instrument(
             unsafe_allow_html=True,
         )
 
-
-def _market_proxy_series(histories: dict[str, pd.DataFrame], range_name: str = "1Y") -> pd.DataFrame:    series = []
+def _market_proxy_series(histories: dict[str, pd.DataFrame], range_name: str = "1Y") -> pd.DataFrame:
+    series = []
     for symbol, frame in histories.items():
         if frame is None or frame.empty or not {"Date", "Close"}.issubset(frame.columns):
             continue
@@ -1047,7 +1042,6 @@ def render_market_home(combined: pd.DataFrame, histories: dict[str, pd.DataFrame
     proxy = _market_proxy_series(histories, st.session_state.get("market_range","1Y"))
     proxy_value = float(proxy["Value"].iloc[-1]) if not proxy.empty else 100.0
     proxy_start = float(proxy["Value"].iloc[0]) if not proxy.empty else 100.0
-
     st.markdown('<div class="market-breadcrumb">Markets &nbsp;/&nbsp; India</div>', unsafe_allow_html=True)
     st.markdown(
         '<div class="market-country"><span class="market-flag">🇮🇳</span>'
@@ -1197,8 +1191,7 @@ def live_dashboard() -> None:
             return
 
         left_stock, right_watch = st.columns([4.65, 1.32], gap="small")
-        with left_stock:
-            render_selected_instrument(
+        with left_stock:            render_selected_instrument(
                 selected_symbol,
                 selected_live_rows.iloc[0].to_dict(),
                 stock_live.iloc[0],
