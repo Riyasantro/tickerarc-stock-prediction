@@ -575,13 +575,51 @@ def _sparkline_svg(history: pd.DataFrame, points: int = 34) -> str:
     )
 
 
+def _select_stock(symbol: str) -> None:
+    st.session_state.selected_symbol = symbol
+    st.session_state.market_view = "stock"
+
+
+def _sidebar_stock_changed() -> None:
+    st.session_state.selected_symbol = st.session_state.stock_selector
+    st.session_state.market_view = "stock"
+
+
+def build_market_categories(combined: pd.DataFrame) -> dict[str, pd.DataFrame]:
+    """Return consistent cross-sectional screens used by the market navigator."""
+    return {
+        "Most Active": combined.sort_values(
+            ["activity_score", "volume_ratio"],
+            ascending=False,
+        ).reset_index(drop=True),
+        "Popular": combined.sort_values(
+            ["attention_score", "activity_score"],
+            ascending=False,
+        ).reset_index(drop=True),
+        "Model Signals": combined.sort_values(
+            ["up_probability", "potential", "return_5d"],
+            ascending=False,
+        ).reset_index(drop=True),
+        "Potential": combined.sort_values(
+            ["potential", "up_probability", "activity_score"],
+            ascending=False,
+        ).reset_index(drop=True),
+        "Low Attention": combined.sort_values(
+            ["attention_score", "activity_score"],
+            ascending=[True, False],
+        ).reset_index(drop=True),
+    }
+
+
 def render_stock_cards(
     frame: pd.DataFrame,
     histories: dict[str, pd.DataFrame],
     title: str,
     subtitle: str,
-    limit: int = 5,
+    limit: int | None = 5,
+    key_prefix: str = "stock",
 ) -> None:
+    """Render interactive stock instruments; clicking a stock opens its workspace."""
     st.markdown(
         f'<div class="section-title">{title}</div>'
         f'<div class="small-muted" style="margin:-3px 0 8px 0">{subtitle}</div>',
@@ -590,32 +628,56 @@ def render_stock_cards(
     if frame.empty:
         st.info("No stocks currently meet this screen.")
         return
-    subset = frame.head(limit).copy()
-    cols = st.columns(len(subset))
-    for col, (_, row) in zip(cols, subset.iterrows(), strict=True):
-        symbol = str(row["symbol"])
-        price = float(row.get("price", 0.0))
-        change = float(row.get("change_pct", 0.0))
-        up_prob = float(row.get("up_probability", np.nan))
-        potential = float(row.get("potential", np.nan))
-        activity = float(row.get("activity_score", np.nan))
-        cls = "stock-green" if change >= 0 else "stock-red"
-        prob_text = f"{up_prob * 100:.0f}%" if np.isfinite(up_prob) else "—"
-        pot_text = f"{potential:.0f}" if np.isfinite(potential) else "—"
-        act_text = f"{activity:.0f}" if np.isfinite(activity) else "—"
-        spark = _sparkline_svg(histories.get(symbol))
-        html = (
-            f'<div class="stock-card">'
-            f'<div class="stock-symbol">{symbol}</div>'
-            f'<div class="stock-price">₹{price:,.2f}</div>'
-            f'<div class="{cls}">{change:+.2f}% session</div>'
-            f'<div style="margin-top:6px">{spark}</div>'
-            f'<div class="stock-meta">Model up <b>{prob_text}</b> · Potential <b>{pot_text}</b></div>'
-            f'<div class="stock-meta">Activity <b>{act_text}</b></div>'
-            f'</div>'
-        )
-        with col:
-            st.markdown(html, unsafe_allow_html=True)
+
+    subset = frame if limit is None else frame.head(limit)
+
+    for row_start in range(0, len(subset), 5):
+        row_slice = subset.iloc[row_start : row_start + 5]
+        cols = st.columns(5)
+        for col, (_, row) in zip(cols, row_slice.iterrows(), strict=False):
+            symbol = str(row["symbol"])
+            price = float(row.get("price", 0.0))
+            change = float(row.get("change_pct", 0.0))
+            up_prob = float(row.get("up_probability", np.nan))
+            potential = float(row.get("potential", np.nan))
+            activity = float(row.get("activity_score", np.nan))
+            volume_ratio = float(row.get("volume_ratio", np.nan))
+
+            change_text = f"{change:+.2f}%"
+            up_text = f"{up_prob * 100:.0f}%" if np.isfinite(up_prob) else "—"
+            potential_text = (
+                f"{potential:.0f}" if np.isfinite(potential) else "—"
+            )
+            activity_text = (
+                f"{activity:.0f}" if np.isfinite(activity) else "—"
+            )
+            volume_text = (
+                f"{volume_ratio:.2f}x"
+                if np.isfinite(volume_ratio)
+                else "—"
+            )
+
+            with col:
+                st.markdown(
+                    f'<div class="stock-card">'
+                    f'<div class="stock-symbol">{symbol}</div>'
+                    f'<div class="stock-price">₹{price:,.2f}</div>'
+                    f'<div class="{"stock-green" if change >= 0 else "stock-red"}">'
+                    f'{change_text} session</div>'
+                    f'<div style="margin-top:6px">'
+                    f'{_sparkline_svg(histories.get(symbol))}</div>'
+                    f'<div class="stock-meta">Up {up_text} · Potential {potential_text}</div>'
+                    f'<div class="stock-meta">Activity {activity_text} · Rel Vol {volume_text}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+                st.button(
+                    f"Open {symbol}",
+                    key=f"{key_prefix}_{symbol}_{row_start}",
+                    use_container_width=True,
+                    on_click=_select_stock,
+                    args=(symbol,),
+                )
 
 
 def render_market_finding_sidebar(
@@ -922,15 +984,31 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+if "market_view" not in st.session_state:
+    st.session_state.market_view = "market"
+if "selected_symbol" not in st.session_state:
+    st.session_state.selected_symbol = NIFTY50_SYMBOLS[0]
+if "market_section" not in st.session_state:
+    st.session_state.market_section = "Overview"
+
 with st.sidebar:
     st.markdown("### Workspace")
     refresh_minutes = st.selectbox("Refresh", [1, 3], index=1)
-    selected_symbol = st.selectbox(
+
+    current_symbol = st.session_state.selected_symbol
+    current_index = (
+        NIFTY50_SYMBOLS.index(current_symbol)
+        if current_symbol in NIFTY50_SYMBOLS
+        else 0
+    )
+    st.selectbox(
         "Instrument",
         NIFTY50_SYMBOLS,
-        index=0,
+        index=current_index,
         key="stock_selector",
+        on_change=_sidebar_stock_changed,
     )
+
     chart_range = st.selectbox(
         "Chart range",
         ["1M", "3M", "6M", "1Y", "3Y", "5Y", "MAX"],
@@ -959,98 +1037,48 @@ if model_bundle is None:
 histories = load_processed_histories(tuple(NIFTY50_SYMBOLS))
 
 
-@st.fragment(run_every=f"{refresh_minutes}min")
-def live_dashboard() -> None:
-    status, now_label = market_state()
-    live = get_live_data(tuple(NIFTY50_SYMBOLS))
-
-    if live.empty:
-        st.error("No live market data returned. The market-data provider may be unavailable or rate-limited.")
-        return
-
-    scores = build_activity_scores(live, histories)
-    predictions = inference_universe(model_bundle, histories)
-    combined = add_potential_scores(scores, predictions, histories)
-    if combined.empty:
-        st.warning("No combined market screen is available.")
-        return
-
-    render_market_finding_sidebar(
-        combined,
-        live,
-        status,
-        model_ready=MODEL_PATH.exists() and SCALER_PATH.exists(),
-        eval_ready=EVAL_PATH.exists(),
-        rl_ready=(MODEL_DIR / "tickerarc_online_lstm_dqn.pt").exists(),
-    )
-
-    advances = int((combined["change_pct"] > 0).sum())
-    declines = int((combined["change_pct"] < 0).sum())
-    h1 = combined.nlargest(1, "activity_score").iloc[0]
-    h2 = combined.nlargest(1, "up_probability").iloc[0]
-    h3 = combined.nlargest(1, "potential").iloc[0]
-
-    c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("Market", status)
-    c2.metric("Adv / Dec", f"{advances} / {declines}")
-    c3.metric("Most active", str(h1["symbol"]))
-    c4.metric("Model up leader", str(h2["symbol"]), f"{float(h2['up_probability'])*100:.0f}%")
-    c5.metric("Potential leader", str(h3["symbol"]), f"{float(h3['potential']):.0f}/100")
-    st.caption(f"Session clock · {now_label}")
-
-    popular = combined.sort_values(["attention_score", "activity_score"], ascending=False)
-    active = combined.sort_values("activity_score", ascending=False)
-    model_buy = combined.sort_values(["up_probability", "potential", "return_5d"], ascending=False)
-    potential = combined.sort_values("potential", ascending=False)
-    low_attention = combined.sort_values("attention_score", ascending=True)
-
-    render_stock_cards(
-        active, histories, "Most active",
-        "Highest cross-sectional activity using volume, movement, range and turnover proxies.",
-    )
-    render_stock_cards(
-        popular, histories, "Popular / attention",
-        "Popularity is represented by the project's volume and turnover attention proxy.",
-    )
-    render_stock_cards(
-        model_buy, histories, "Model buy signals",
-        "Stocks highest on modeled upward probability and potential score.",
-    )
-    render_stock_cards(
-        potential, histories, "Potential leaders",
-        "Heuristic potential from model probability, expected return, activity, volume, patterns and risk penalty.",
-    )
-    render_stock_cards(
-        low_attention, histories, "Low-attention watch",
-        "Lower-attention instruments kept separate from the active and model-led screens.",
-    )
-
-    selected_live_rows = live[live["symbol"] == selected_symbol]
-    selected_history = histories.get(selected_symbol)
-    if selected_history is None or selected_live_rows.empty:
-        st.warning("Selected instrument is not currently available.")
-        return
-
-    selected_quote = selected_live_rows.iloc[0].to_dict()
-    stock_live = combined[combined["symbol"] == selected_symbol]
-    if stock_live.empty:
-        st.warning("Selected instrument is not available in the combined screen.")
-        return
-
-    row = stock_live.iloc[0]
-    patterns = pattern_summary(selected_history)
+def render_selected_instrument(
+    selected_symbol: str,
+    selected_quote: dict[str, object],
+    row: pd.Series,
+    history: pd.DataFrame,
+    status: str,
+    refresh_minutes: int,
+    chart_range: str,
+    show_ema: bool,
+    show_sr: bool,
+) -> None:
+    """Render the selected instrument workspace."""
+    patterns = pattern_summary(history)
     prediction = row.to_dict()
-    prediction["risk_penalty"] = min(float(prediction.get("volatility_5d", 0.0)) * 100, 30)
+    prediction["risk_penalty"] = min(
+        float(prediction.get("volatility_5d", 0.0)) * 100,
+        30,
+    )
     result = TickerArcAgent().analyze(
-        selected_symbol, row.to_dict(), prediction, patterns
+        selected_symbol,
+        row.to_dict(),
+        prediction,
+        patterns,
     )
 
-    st.markdown(
-        f'<div class="section-title">Selected instrument · {selected_symbol}</div>',
-        unsafe_allow_html=True,
-    )
+    top_left, top_right = st.columns([4, 1])
+    with top_left:
+        st.markdown(
+            f'<div class="section-title">Selected instrument · {selected_symbol}</div>',
+            unsafe_allow_html=True,
+        )
+    with top_right:
+        if st.button("← Market", use_container_width=True):
+            st.session_state.market_view = "market"
+            st.rerun()
+
     q1, q2, q3, q4, q5 = st.columns(5)
-    q1.metric("Price", f"₹{float(row['price']):,.2f}", f"{float(row['change_pct']):+.2f}%")
+    q1.metric(
+        "Price",
+        f"₹{float(row['price']):,.2f}",
+        f"{float(row['change_pct']):+.2f}%",
+    )
     q2.metric("1D model", f"{float(row['return_1d'])*100:+.2f}%")
     q3.metric("5D model", f"{float(row['return_5d'])*100:+.2f}%")
     q4.metric("10D model", f"{float(row['return_10d'])*100:+.2f}%")
@@ -1058,7 +1086,7 @@ def live_dashboard() -> None:
 
     st.plotly_chart(
         make_chart(
-            selected_history,
+            history,
             selected_symbol,
             chart_range,
             show_ema=show_ema,
@@ -1081,11 +1109,21 @@ def live_dashboard() -> None:
         with d1:
             st.markdown("#### Session profile")
             s1, s2, s3 = st.columns(3)
-            s1.metric("Open", f"₹{float(selected_quote.get('open', row['price'])):,.2f}")
-            s2.metric("High", f"₹{float(selected_quote.get('day_high', row['price'])):,.2f}")
-            s3.metric("Low", f"₹{float(selected_quote.get('day_low', row['price'])):,.2f}")
+            s1.metric(
+                "Open",
+                f"₹{float(selected_quote.get('open', row['price'])):,.2f}",
+            )
+            s2.metric(
+                "High",
+                f"₹{float(selected_quote.get('day_high', row['price'])):,.2f}",
+            )
+            s3.metric(
+                "Low",
+                f"₹{float(selected_quote.get('day_low', row['price'])):,.2f}",
+            )
             st.markdown(
-                f'<div class="small-muted">Session volume: {float(selected_quote.get("session_volume", 0)):,.0f} · '
+                f'<div class="small-muted">Session volume: '
+                f'{float(selected_quote.get("session_volume", 0)):,.0f} · '
                 f'Relative volume: {float(row.get("volume_ratio", 0)):.2f}x · '
                 f'Activity score: {float(row.get("activity_score", 0)):.1f}</div>',
                 unsafe_allow_html=True,
@@ -1111,7 +1149,11 @@ def live_dashboard() -> None:
                 margin={"l": 10, "r": 10, "t": 15, "b": 10},
                 showlegend=True,
             )
-            st.plotly_chart(donut, use_container_width=True, config={"displaylogo": False})
+            st.plotly_chart(
+                donut,
+                use_container_width=True,
+                config={"displaylogo": False},
+            )
         with d2:
             st.markdown("#### Analysis agent")
             st.write(result.summary)
@@ -1120,24 +1162,43 @@ def live_dashboard() -> None:
                 unsafe_allow_html=True,
             )
             st.markdown("#### Provider / system status")
-            provider_time = pd.to_datetime(selected_quote.get("timestamp"), errors="coerce")
-            provider_text = provider_time.strftime("%Y-%m-%d %H:%M:%S") if pd.notna(provider_time) else "Unavailable"
+            provider_time = pd.to_datetime(
+                selected_quote.get("timestamp"),
+                errors="coerce",
+            )
+            provider_text = (
+                provider_time.strftime("%Y-%m-%d %H:%M:%S")
+                if pd.notna(provider_time)
+                else "Unavailable"
+            )
             st.write(f"Market state: **{status}**")
             st.write(f"Provider timestamp: **{provider_text}**")
-            st.write(f"Forecast model: **{row.get('model_name', 'TickerArc Multi-Horizon LSTM v2')}**")
+            st.write(
+                f"Forecast model: **{row.get('model_name', 'TickerArc Multi-Horizon LSTM v2')}**"
+            )
 
     with signals_tab:
         p1, p2 = st.columns(2)
         with p1:
             st.markdown("#### Candlestick patterns")
-            candle_items = patterns["candle_hits"][:10] or ["No strong recent TA-Lib signal"]
+            candle_items = patterns["candle_hits"][:10] or [
+                "No strong recent TA-Lib signal"
+            ]
             for item in candle_items:
-                st.markdown(f'<span class="pill pill-green">{item}</span>', unsafe_allow_html=True)
+                st.markdown(
+                    f'<span class="pill pill-green">{item}</span>',
+                    unsafe_allow_html=True,
+                )
         with p2:
             st.markdown("#### Chart patterns")
-            chart_items = patterns["chart_hits"][:10] or ["No strong heuristic chart structure"]
+            chart_items = patterns["chart_hits"][:10] or [
+                "No strong heuristic chart structure"
+            ]
             for item in chart_items:
-                st.markdown(f'<span class="pill pill-muted">{item}</span>', unsafe_allow_html=True)
+                st.markdown(
+                    f'<span class="pill pill-muted">{item}</span>',
+                    unsafe_allow_html=True,
+                )
 
         st.markdown("#### Forecast distribution")
         f1, f2, f3, f4 = st.columns(4)
@@ -1167,18 +1228,21 @@ def live_dashboard() -> None:
                 catchup_info = online_manager.catch_up(
                     selected_symbol,
                     intraday,
-                    selected_history,
+                    history,
                     refresh_minutes,
                 )
         if status == "OPEN":
             online_result = online_manager.observe_live(
                 selected_symbol,
-                selected_history.iloc[-1],
+                history.iloc[-1],
                 selected_quote,
                 refresh_minutes,
             )
     except Exception as exc:
-        catchup_info = {"transitions": 0, "status": f"Online RL unavailable: {exc}"}
+        catchup_info = {
+            "transitions": 0,
+            "status": f"Online RL unavailable: {exc}",
+        }
 
     with rl_tab:
         r1, r2, r3, r4 = st.columns(4)
@@ -1187,7 +1251,9 @@ def live_dashboard() -> None:
             r2.metric("Position", "LONG" if online_result.position else "FLAT")
             r3.metric(
                 "Interval reward",
-                f"{online_result.reward * 100:+.4f}%" if online_result.reward is not None else "Waiting",
+                f"{online_result.reward * 100:+.4f}%"
+                if online_result.reward is not None
+                else "Waiting",
             )
             r4.metric("RL updates", f"{online_result.steps:,}")
             st.caption(
@@ -1210,20 +1276,135 @@ def live_dashboard() -> None:
         )
 
         with st.expander("Advanced walk-forward evaluation"):
-            st.write("Expanding chronological folds retrain on earlier observations and score later observations only.")
+            st.write(
+                "Expanding chronological folds retrain on earlier observations and score later observations only."
+            )
             folds = st.slider("Folds", 2, 4, 3)
             epochs = st.slider("Epochs per fold", 1, 5, 2)
             if st.button("Run walk-forward evaluation"):
                 with st.spinner("Running chronological folds…"):
                     try:
                         metrics = walk_forward_evaluate(
-                            selected_history,
+                            history,
                             folds=folds,
                             train_epochs=epochs,
                         )
                         st.json(metrics)
                     except Exception as exc:
                         st.error(str(exc))
+
+
+@st.fragment(run_every=f"{refresh_minutes}min")
+def live_dashboard() -> None:
+    status, now_label = market_state()
+    live = get_live_data(tuple(NIFTY50_SYMBOLS))
+
+    if live.empty:
+        st.error(
+            "No live market data returned. The market-data provider may be unavailable or rate-limited."
+        )
+        return
+
+    scores = build_activity_scores(live, histories)
+    predictions = inference_universe(model_bundle, histories)
+    combined = add_potential_scores(scores, predictions, histories)
+    if combined.empty:
+        st.warning("No combined market screen is available.")
+        return
+
+    render_market_finding_sidebar(
+        combined,
+        live,
+        status,
+        model_ready=MODEL_PATH.exists() and SCALER_PATH.exists(),
+        eval_ready=EVAL_PATH.exists(),
+        rl_ready=(MODEL_DIR / "tickerarc_online_lstm_dqn.pt").exists(),
+    )
+
+    selected_symbol = st.session_state.selected_symbol
+
+    if st.session_state.market_view == "stock":
+        selected_live_rows = live[live["symbol"] == selected_symbol]
+        selected_history = histories.get(selected_symbol)
+        stock_live = combined[combined["symbol"] == selected_symbol]
+
+        if selected_history is None or selected_live_rows.empty or stock_live.empty:
+            st.warning("Selected instrument is not currently available.")
+            return
+
+        render_selected_instrument(
+            selected_symbol=selected_symbol,
+            selected_quote=selected_live_rows.iloc[0].to_dict(),
+            row=stock_live.iloc[0],
+            history=selected_history,
+            status=status,
+            refresh_minutes=refresh_minutes,
+            chart_range=chart_range,
+            show_ema=show_ema,
+            show_sr=show_sr,
+        )
+        return
+
+    advances = int((combined["change_pct"] > 0).sum())
+    declines = int((combined["change_pct"] < 0).sum())
+    h1 = combined.nlargest(1, "activity_score").iloc[0]
+    h2 = combined.nlargest(1, "up_probability").iloc[0]
+    h3 = combined.nlargest(1, "potential").iloc[0]
+
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("Market", status)
+    c2.metric("Adv / Dec", f"{advances} / {declines}")
+    c3.metric("Most active", str(h1["symbol"]))
+    c4.metric(
+        "Model up leader",
+        str(h2["symbol"]),
+        f"{float(h2['up_probability'])*100:.0f}%",
+    )
+    c5.metric(
+        "Potential leader",
+        str(h3["symbol"]),
+        f"{float(h3['potential']):.0f}/100",
+    )
+    st.caption(f"Session clock · {now_label}")
+
+    categories = build_market_categories(combined)
+
+    st.radio(
+        "Market",
+        ["Overview", *categories.keys()],
+        key="market_section",
+        horizontal=True,
+        label_visibility="collapsed",
+    )
+
+    section = st.session_state.market_section
+    descriptions = {
+        "Most Active": "Highest cross-sectional activity using volume, movement, range and turnover proxies.",
+        "Popular": "Popularity is represented by the project's volume and turnover attention proxy.",
+        "Model Signals": "Stocks currently highest on modeled upward probability and potential score.",
+        "Potential": "Heuristic potential from model probability, expected return, activity, volume, patterns and risk penalty.",
+        "Low Attention": "Lower-attention instruments kept separate from the active and model-led screens.",
+    }
+
+    if section == "Overview":
+        for name, frame in categories.items():
+            render_stock_cards(
+                frame,
+                histories,
+                name,
+                descriptions[name],
+                limit=5,
+                key_prefix=f"overview_{name.lower().replace(' ', '_')}",
+            )
+    else:
+        render_stock_cards(
+            categories[section],
+            histories,
+            section,
+            descriptions[section],
+            limit=None,
+            key_prefix=f"category_{section.lower().replace(' ', '_')}",
+        )
 
 
 live_dashboard()
