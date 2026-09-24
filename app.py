@@ -357,7 +357,8 @@ def bootstrap_project() -> None:
         MODEL_PATH.exists() and SCALER_PATH.exists() and META_PATH.exists()
     )
     if not model_rebuild_needed:
-        try:            metadata = json.loads(META_PATH.read_text(encoding="utf-8"))
+        try:
+            metadata = json.loads(META_PATH.read_text(encoding="utf-8"))
             model_rebuild_needed = (
                 int(metadata.get("train_years", 0)) != TRAIN_YEARS
                 or int(metadata.get("eval_years", 0)) != EVAL_YEARS
