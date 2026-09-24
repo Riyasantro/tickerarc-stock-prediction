@@ -1076,7 +1076,6 @@ def render_market_home(combined: pd.DataFrame, histories: dict[str, pd.DataFrame
                 key="market_range",
                 label_visibility="collapsed",
             )
-            st.session_state.market_range = selected_range
         st.markdown('<div class="tv-chart-shell">', unsafe_allow_html=True)
         st.plotly_chart(
             make_market_proxy_chart(histories, selected_range),
