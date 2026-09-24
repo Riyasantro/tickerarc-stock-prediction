@@ -902,13 +902,6 @@ def live_dashboard() -> None:
     st.caption(now_label)
 
     categories = build_market_categories(combined)
-    st.radio(
-        "Market",
-        ["Overview", *categories.keys()],
-        key="market_section",
-        horizontal=True,
-        label_visibility="collapsed",
-    )
     section = st.session_state.market_section
     descriptions = {
         "Most Active": "Highest cross-sectional activity using volume, movement, range and turnover proxies.",
