@@ -174,6 +174,30 @@ div[data-baseweb="select"] > div {
 .health-warn { color: var(--amber); font-weight: 800; }
 .small-muted { color: var(--muted); font-size: .79rem; }
 .disclaimer { color: var(--muted); font-size: .74rem; padding: 8px 0; }
+.terminal-bar {
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    background:#080d0a;
+    border:1px solid var(--border);
+    border-radius:12px;
+    padding:10px 14px;
+    margin-bottom:12px;
+}
+.terminal-brand { font-weight:850; letter-spacing:.08em; }
+.terminal-status { color:var(--muted); font-size:.78rem; }
+.live-dot { display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--green); margin-right:6px; }
+.stock-header {
+    display:flex; justify-content:space-between; align-items:end;
+    gap:16px; margin:6px 0 10px 0;
+}
+.stock-name { font-size:2rem; font-weight:850; line-height:1; }
+.stock-sub { color:var(--muted); font-size:.8rem; margin-top:5px; }
+.price-big { font-size:1.55rem; font-weight:820; text-align:right; }
+.range-bar {
+    background:#080d0a; border:1px solid var(--border);
+    border-radius:10px; padding:6px 10px 0 10px; margin:8px 0;
+}
 .finding-grid {
     background: #080d0a;
     border: 1px solid var(--border);
@@ -756,308 +780,23 @@ def render_market_finding_sidebar(
     last_provider = pd.to_datetime(live["timestamp"], errors="coerce").max()
 
     with st.sidebar:
-        st.markdown("### Market findings")
-        st.markdown(
-            f'<div class="finding"><div class="finding-label">Breadth</div>'
-            f'<div class="finding-value">↑ {advances} · ↓ {declines} · • {unchanged}</div></div>',
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            f'<div class="finding"><div class="finding-label">Most active</div>'
-            f'<div class="finding-value">{active["symbol"]} · {float(active["activity_score"]):.0f}</div></div>',
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            f'<div class="finding"><div class="finding-label">Model up-probability leader</div>'
-            f'<div class="finding-value">{model_leader["symbol"]} · {float(model_leader["up_probability"])*100:.0f}%</div></div>',
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            f'<div class="finding"><div class="finding-label">Potential leader</div>'
-            f'<div class="finding-value">{potential_leader["symbol"]} · {float(potential_leader["potential"]):.0f}/100</div></div>',
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            f'<div class="finding"><div class="finding-label">Attention leader (proxy)</div>'
-            f'<div class="finding-value">{attention_leader["symbol"]} · {float(attention_leader["attention_score"]):.0f}</div></div>',
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            f'<div class="finding"><div class="finding-label">20D average volatility</div>'
-            f'<div class="finding-value">{avg_vol*100:.2f}%</div></div>',
-            unsafe_allow_html=True,
-        )
-        provider_text = last_provider.strftime("%H:%M:%S") if pd.notna(last_provider) else "—"
-        st.caption(f"Feed: {status} · provider timestamp {provider_text}")
-
-        st.markdown("### System health")
-        st.markdown(
-            f'Model artifacts: <span class="{"health-ok" if model_ready else "health-warn"}">'
-            f'{"READY" if model_ready else "MISSING"}</span>',
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            f'Holdout evaluation: <span class="{"health-ok" if eval_ready else "health-warn"}">'
-            f'{"READY" if eval_ready else "PENDING"}</span>',
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            f'Online RL state: <span class="{"health-ok" if rl_ready else "health-warn"}">'
-            f'{"PERSISTED" if rl_ready else "NOT INITIALIZED"}</span>',
-            unsafe_allow_html=True,
-        )
-
-
-def render_model_performance() -> None:
-    if not EVAL_PATH.exists():
-        st.info("Model evaluation is not available yet.")
-        return
-    try:
-        holdout = json.loads(EVAL_PATH.read_text(encoding="utf-8"))
-    except Exception as exc:
-        st.error(f"Unable to read evaluation results: {exc}")
-        return
-
-    model_name = str(holdout.get("model", "TickerArc Multi-Horizon LSTM v2"))
-    mae = float(holdout.get("mae_5d", 0.0))
-    acc = float(holdout.get("direction_accuracy", 0.0))
-    samples = int(holdout.get("samples", 0))
-    stocks = int(holdout.get("stocks_evaluated", 0))
-    baseline = holdout.get("baselines", {})
-
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("5D return MAE", f"{mae*100:.2f}%")
-    m2.metric("Direction accuracy", f"{acc*100:.1f}%")
-    m3.metric("Holdout samples", f"{samples:,}")
-    m4.metric("Stocks evaluated", f"{stocks}")
-
-    st.caption(
-        f"{model_name} · frozen on latest {int(holdout.get('eval_years', EVAL_YEARS))}Y holdout · "
-        f"{holdout.get('evaluation_window', 'unknown window')}"
-    )
-
-    labels = [model_name]
-    mae_values = [mae]
-    acc_values = [acc]
-    for name, values in baseline.items():
-        labels.append(str(name).replace("_", " ").title())
-        mae_values.append(float(values.get("mae_5d", 0.0)))
-        acc_values.append(float(values.get("direction_accuracy", 0.0)))
-
-    p1, p2 = st.columns(2)
-    with p1:
-        fig = go.Figure(
-            go.Bar(
-                x=labels,
-                y=[v * 100 for v in mae_values],
-                marker_color=["#00e676"] + ["#465149"] * (len(labels) - 1),
-                text=[f"{v*100:.2f}%" for v in mae_values],
-                textposition="auto",
-            )
-        )
-        fig.update_layout(
-            title="5D return MAE · lower is better",
-            paper_bgcolor="#060806",
-            plot_bgcolor="#060806",
-            font={"color": "#e8f2eb"},
-            margin={"l": 10, "r": 10, "t": 45, "b": 20},
-            height=310,
-            yaxis_title="MAE (%)",
-        )
-        st.plotly_chart(fig, use_container_width=True, config={"displaylogo": False})
-    with p2:
-        fig = go.Figure(
-            go.Bar(
-                x=labels,
-                y=[v * 100 for v in acc_values],
-                marker_color=["#00e676"] + ["#465149"] * (len(labels) - 1),
-                text=[f"{v*100:.1f}%" for v in acc_values],
-                textposition="auto",
-            )
-        )
-        fig.update_layout(
-            title="Direction accuracy · 2Y holdout",
-            paper_bgcolor="#060806",
-            plot_bgcolor="#060806",
-            font={"color": "#e8f2eb"},
-            margin={"l": 10, "r": 10, "t": 45, "b": 20},
-            height=310,
-            yaxis_title="Accuracy (%)",
-            yaxis={"range": [0, 100]},
-        )
-        st.plotly_chart(fig, use_container_width=True, config={"displaylogo": False})
-
-
-def inference_universe(
-    model_bundle,
-    histories: dict[str, pd.DataFrame],
-) -> pd.DataFrame:
-    model, scaler, metadata = model_bundle
-    rows: list[dict[str, object]] = []
-
-    for symbol, frame in histories.items():
-        try:
-            rows.append(
-                {
-                    "symbol": symbol,
-                    **predict_latest(
-                        model,
-                        scaler,
-                        frame,
-                        metadata,
-                    ),
-                }
-            )
-        except Exception:
-            continue
-
-    return pd.DataFrame(rows)
-
-
-def add_potential_scores(
-    scores: pd.DataFrame,
-    predictions: pd.DataFrame,
-    histories: dict[str, pd.DataFrame],
-) -> pd.DataFrame:
-    out = scores.merge(predictions, on="symbol", how="left")
-    if out.empty:
-        return out
-
-    pattern_scores: dict[str, float] = {}
-    for symbol, frame in histories.items():
-        latest = frame.iloc[-1]
-        candle_signal = float(
-            latest.get("candlestick_signal_score", 0.0)
-        )
-        chart_signal = 0.0
-        for column, direction in [
-            ("breakout_20", 1),
-            ("breakdown_20", -1),
-            ("double_top_30", -1),
-            ("double_bottom_30", 1),
-            ("head_shoulders_30", -1),
-            ("inverse_head_shoulders_30", 1),
-            ("ascending_triangle_20", 1),
-            ("descending_triangle_20", -1),
-            ("rising_wedge_20", -1),
-            ("falling_wedge_20", 1),
-            ("bull_flag", 1),
-            ("bear_flag", -1),
-        ]:
-            chart_signal += float(
-                latest.get(column, 0.0)
-            ) * direction
-
-        pattern_scores[symbol] = float(
-            np.tanh((candle_signal / 5.0) + (chart_signal / 3.0))
-        )
-
-    out["pattern_score"] = (
-        out["symbol"].map(pattern_scores).fillna(0.0)
-    )
-    out["potential"] = out.apply(
-        lambda row: potential_score(
-            float(row.get("up_probability", 0.0)),
-            float(row.get("return_5d", 0.0)),
-            float(row.get("activity_score", 0.0)),
-            float(row.get("volume_ratio", 0.0)),
-            float(row.get("pattern_score", 0.0)),
-            min(float(row.get("volatility_5d", 0.0)) * 100, 30),
-        ),
-        axis=1,
-    ).round(1)
-    return out
-
-
-def render_table(frame: pd.DataFrame, title: str) -> None:
     st.markdown(
-        f'<div class="section-title">{title}</div>',
+        '<div class="terminal-brand">TICKERARC</div>'
+        '<div class="small-muted">NIFTY 50 MARKET</div>',
         unsafe_allow_html=True,
     )
-    if frame.empty:
-        st.info("No data available for this category.")
-        return
-
-    columns = [
-        "symbol",
-        "price",
-        "change_pct",
-        "activity_score",
-        "volume_ratio",
-        "attention_score",
-        "direction",
-        "up_probability",
-        "return_5d",
-        "potential",
-    ]
-    table = frame[[c for c in columns if c in frame.columns]].copy()
-    table = table.rename(
-        columns={
-            "symbol": "Stock",
-            "price": "Price",
-            "change_pct": "Change %",
-            "activity_score": "Activity",
-            "volume_ratio": "Rel. Volume",
-            "attention_score": "Attention",
-            "direction": "LSTM Direction",
-            "up_probability": "Up Prob.",
-            "return_5d": "5D Return",
-            "potential": "Potential",
-        }
+    st.markdown("---")
+    st.markdown("**MARKET**")
+    st.radio(
+        "Market",
+        ["Overview", "Most Active", "Popular", "Model Signals", "Potential", "Low Attention"],
+        key="market_section",
+        label_visibility="collapsed",
     )
-
-    if "Price" in table:
-        table["Price"] = table["Price"].round(2)
-    if "Change %" in table:
-        table["Change %"] = table["Change %"].round(2)
-    if "Rel. Volume" in table:
-        table["Rel. Volume"] = table["Rel. Volume"].round(2)
-    if "Up Prob." in table:
-        table["Up Prob."] = (
-            table["Up Prob."].mul(100).round(1).astype(str) + "%"
-        )
-    if "5D Return" in table:
-        table["5D Return"] = (
-            table["5D Return"].mul(100).round(2).astype(str) + "%"
-        )
-
-    st.dataframe(
-        table,
-        use_container_width=True,
-        hide_index=True,
-    )
-
-
-st.markdown(
-    """
-    <div class="market-head">
-        <div class="kicker">NIFTY 50 · MARKET TERMINAL</div>
-        <div class="market-title">TickerArc</div>
-        <div class="market-subtitle">Live market activity, model signals, technical structure and online RL in one workspace.</div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
-if "market_view" not in st.session_state:
-    st.session_state.market_view = "market"
-if "selected_symbol" not in st.session_state:
-    st.session_state.selected_symbol = NIFTY50_SYMBOLS[0]
-if "market_section" not in st.session_state:
-    st.session_state.market_section = "Overview"
-if "chart_focus" not in st.session_state:
-    st.session_state.chart_focus = None
-
-with st.sidebar:
-    st.markdown("### Workspace")
-    refresh_minutes = st.selectbox("Refresh", [1, 3], index=1)
+    st.markdown("---")
 
     current_symbol = st.session_state.selected_symbol
-    current_index = (
-        NIFTY50_SYMBOLS.index(current_symbol)
-        if current_symbol in NIFTY50_SYMBOLS
-        else 0
-    )
+    current_index = NIFTY50_SYMBOLS.index(current_symbol) if current_symbol in NIFTY50_SYMBOLS else 0
     st.selectbox(
         "Instrument",
         NIFTY50_SYMBOLS,
@@ -1066,20 +805,11 @@ with st.sidebar:
         on_change=_sidebar_stock_changed,
     )
 
-    chart_range = st.selectbox(
-        "Chart range",
-        ["1M", "3M", "6M", "1Y", "3Y", "5Y", "MAX"],
-        index=3,
-    )
-    show_ema = st.checkbox("EMA 20 / 50", value=True)
-    show_sr = st.checkbox("Support / resistance", value=True)
-    show_patterns = st.checkbox("Pattern annotations", value=True)
-    st.markdown("---")
-    if st.button("Rebuild model", use_container_width=True):
-        for path in (MODEL_PATH, SCALER_PATH, META_PATH, EVAL_PATH):
-            path.unlink(missing_ok=True)
-        get_model_bundle.clear()
-        st.rerun()
+    if st.session_state.market_view == "stock":
+        if st.button("← Back to market", use_container_width=True):
+            st.session_state.market_view = "market"
+            st.session_state.chart_focus = None
+            st.rerun()
 
 try:
     bootstrap_project()
@@ -1126,17 +856,21 @@ def render_selected_instrument(
     focus_date = focus.get("date") if isinstance(focus, dict) else None
     focus_title = focus.get("title") if isinstance(focus, dict) else None
 
-    top_left, top_right = st.columns([4, 1])
-    with top_left:
-        st.markdown(
-            f'<div class="section-title">Selected instrument · {selected_symbol}</div>',
-            unsafe_allow_html=True,
-        )
-    with top_right:
-        if st.button("← Market", use_container_width=True):
-            st.session_state.market_view = "market"
-            st.session_state.chart_focus = None
-            st.rerun()
+    provider_time = pd.to_datetime(selected_quote.get("timestamp"), errors="coerce")
+    provider_text = provider_time.strftime("%H:%M:%S") if pd.notna(provider_time) else "—"
+    change = float(row["change_pct"])
+    change_class = "stock-green" if change >= 0 else "stock-red"
+
+    st.markdown(
+        f'<div class="stock-header">'
+        f'<div><div class="stock-name">{selected_symbol}</div>'
+        f'<div class="stock-sub">NSE · NIFTY 50 · {status}</div></div>'
+        f'<div><div class="price-big">₹{float(row["price"]):,.2f}</div>'
+        f'<div class="{change_class}" style="text-align:right">{change:+.2f}% today</div>'
+        f'<div class="stock-sub" style="text-align:right">Updated {provider_text} IST</div></div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
 
     q1, q2, q3, q4, q5 = st.columns(5)
     q1.metric(
@@ -1149,14 +883,39 @@ def render_selected_instrument(
     q4.metric("10D model", f"{float(row['return_10d'])*100:+.2f}%")
     q5.metric("Potential", f"{float(result.potential):.0f}/100")
 
+    rc1, rc2 = st.columns([2.3, 1])
+    with rc1:
+        st.markdown('<div class="range-bar">', unsafe_allow_html=True)
+        selected_range = st.radio(
+            "Range",
+            ["1M", "3M", "6M", "1Y", "3Y", "5Y", "MAX"],
+            horizontal=True,
+            key=f"range_{selected_symbol}",
+            index=["1M", "3M", "6M", "1Y", "3Y", "5Y", "MAX"].index(st.session_state.chart_range),
+            label_visibility="collapsed",
+        )
+        st.markdown('</div>', unsafe_allow_html=True)
+    with rc2:
+        cema, csr, cpat = st.columns(3)
+        with cema:
+            local_ema = st.checkbox("EMA", value=st.session_state.show_ema, key=f"ema_{selected_symbol}")
+        with csr:
+            local_sr = st.checkbox("S/R", value=st.session_state.show_sr, key=f"sr_{selected_symbol}")
+        with cpat:
+            local_patterns = st.checkbox("Patterns", value=st.session_state.show_patterns, key=f"patterns_{selected_symbol}")
+    st.session_state.chart_range = selected_range
+    st.session_state.show_ema = local_ema
+    st.session_state.show_sr = local_sr
+    st.session_state.show_patterns = local_patterns
+
     st.plotly_chart(
         make_focused_trading_chart(
             history,
             selected_symbol,
-            chart_range,
-            show_ema=show_ema,
-            show_sr=show_sr,
-            show_patterns=show_patterns,
+            selected_range,
+            show_ema=local_ema,
+            show_sr=local_sr,
+            show_patterns=local_patterns,
             focus_date=focus_date,
             focus_label=focus_title,
         ),
@@ -1206,7 +965,7 @@ def render_selected_instrument(
         st.markdown('</div>', unsafe_allow_html=True)
 
     details_tab, signals_tab, performance_tab, rl_tab = st.tabs(
-        ["Instrument overview", "Signals & structure", "Model performance", "Online RL"]
+        ["Overview", "Patterns", "Forecast", "Strategy"]
     )
 
     with details_tab:
@@ -1233,7 +992,7 @@ def render_selected_instrument(
                 f'Activity score: {float(row.get("activity_score", 0)):.1f}</div>',
                 unsafe_allow_html=True,
             )
-            st.markdown("#### Model distribution")
+            st.markdown("#### Forecast distribution")
             donut = go.Figure(
                 go.Pie(
                     labels=["Down", "Neutral", "Up"],
@@ -1260,27 +1019,16 @@ def render_selected_instrument(
                 config={"displaylogo": False},
             )
         with d2:
-            st.markdown("#### Analysis agent")
+            st.markdown("#### TickerArc findings")
             st.write(result.summary)
             st.markdown(
                 '<div class="disclaimer">Forecasts, probabilities and potential are model outputs and heuristics, not guaranteed future results.</div>',
                 unsafe_allow_html=True,
             )
-            st.markdown("#### Provider / system status")
-            provider_time = pd.to_datetime(
-                selected_quote.get("timestamp"),
-                errors="coerce",
-            )
-            provider_text = (
-                provider_time.strftime("%Y-%m-%d %H:%M:%S")
-                if pd.notna(provider_time)
-                else "Unavailable"
-            )
-            st.write(f"Market state: **{status}**")
-            st.write(f"Provider timestamp: **{provider_text}**")
-            st.write(
-                f"Forecast model: **{row.get('model_name', 'TickerArc Multi-Horizon LSTM v2')}**"
-            )
+            st.markdown("#### Market context")
+            st.write(f"Session: **{status}**")
+            st.write(f"Relative volume: **{float(row.get('volume_ratio', 0)):.2f}x**")
+            st.write(f"Activity: **{float(row.get('activity_score', 0)):.0f}/100**")
 
     with signals_tab:
         p1, p2 = st.columns(2)
@@ -1399,7 +1147,7 @@ def render_selected_instrument(
                         st.error(str(exc))
 
 
-@st.fragment(run_every=f"{refresh_minutes}min")
+@st.fragment(run_every="1min")
 def live_dashboard() -> None:
     status, now_label = market_state()
     live = get_live_data(tuple(NIFTY50_SYMBOLS))
@@ -1416,15 +1164,6 @@ def live_dashboard() -> None:
     if combined.empty:
         st.warning("No combined market screen is available.")
         return
-
-    render_market_finding_sidebar(
-        combined,
-        live,
-        status,
-        model_ready=MODEL_PATH.exists() and SCALER_PATH.exists(),
-        eval_ready=EVAL_PATH.exists(),
-        rl_ready=(MODEL_DIR / "tickerarc_online_lstm_dqn.pt").exists(),
-    )
 
     selected_symbol = st.session_state.selected_symbol
 
@@ -1444,10 +1183,10 @@ def live_dashboard() -> None:
             history=selected_history,
             status=status,
             refresh_minutes=refresh_minutes,
-            chart_range=chart_range,
-            show_ema=show_ema,
-            show_sr=show_sr,
-            show_patterns=show_patterns,
+            chart_range=st.session_state.chart_range,
+            show_ema=st.session_state.show_ema,
+            show_sr=st.session_state.show_sr,
+            show_patterns=st.session_state.show_patterns,
         )
         return
 
@@ -1459,10 +1198,10 @@ def live_dashboard() -> None:
 
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("Market", status)
-    c2.metric("Adv / Dec", f"{advances} / {declines}")
-    c3.metric("Most active", str(h1["symbol"]))
+    c2.metric("Advancers / Decliners", f"{advances} / {declines}")
+    c3.metric("Activity leader", str(h1["symbol"]))
     c4.metric(
-        "Model up leader",
+        "Forecast leader",
         str(h2["symbol"]),
         f"{float(h2['up_probability'])*100:.0f}%",
     )
@@ -1471,7 +1210,7 @@ def live_dashboard() -> None:
         str(h3["symbol"]),
         f"{float(h3['potential']):.0f}/100",
     )
-    st.caption(f"Session clock · {now_label}")
+    st.caption(now_label)
 
     categories = build_market_categories(combined)
 
