@@ -42,6 +42,7 @@ from src.models.trainer import (
 from src.models.benchmarks import evaluate_baselines
 from src.models.walk_forward import walk_forward_evaluate
 from src.rl.online_loop import OnlineRLManager
+from src.ui.trading_chart import make_trading_chart, mini_candlestick_svg
 
 ROOT = Path(__file__).resolve().parent
 MODEL_DIR = ROOT / "models"
@@ -1016,6 +1017,7 @@ with st.sidebar:
     )
     show_ema = st.checkbox("EMA 20 / 50", value=True)
     show_sr = st.checkbox("Support / resistance", value=True)
+    show_patterns = st.checkbox("Pattern annotations", value=True)
     st.markdown("---")
     if st.button("Rebuild model", use_container_width=True):
         for path in (MODEL_PATH, SCALER_PATH, META_PATH, EVAL_PATH):
@@ -1047,8 +1049,10 @@ def render_selected_instrument(
     chart_range: str,
     show_ema: bool,
     show_sr: bool,
+    show_patterns: bool,
 ) -> None:
     """Render the selected instrument workspace."""
+
     patterns = pattern_summary(history)
     prediction = row.to_dict()
     prediction["risk_penalty"] = min(
@@ -1085,12 +1089,13 @@ def render_selected_instrument(
     q5.metric("Potential", f"{float(result.potential):.0f}/100")
 
     st.plotly_chart(
-        make_chart(
+        make_trading_chart(
             history,
             selected_symbol,
             chart_range,
             show_ema=show_ema,
             show_sr=show_sr,
+            show_patterns=show_patterns,
         ),
         use_container_width=True,
         config={
@@ -1342,6 +1347,7 @@ def live_dashboard() -> None:
             chart_range=chart_range,
             show_ema=show_ema,
             show_sr=show_sr,
+            show_patterns=show_patterns,
         )
         return
 
