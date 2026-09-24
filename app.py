@@ -147,8 +147,7 @@ div[data-baseweb="select"] > div {
 .stock-card {
     background: var(--panel);
     border: 1px solid var(--border);
-    border-radius: 12px;    padding: 12px;
-    min-height: 128px;
+    border-radius: 12px;    padding: 12px;    min-height: 128px;
     transition: border-color .2s ease, transform .2s ease;
 }
 .stock-card:hover {
@@ -296,9 +295,9 @@ def get_live_data(symbols: tuple[str, ...]) -> pd.DataFrame:
     try:
         result = fetch_live_quotes(symbols, interval="1m", lookback="5d")
         if not result.empty:
-            return result    except Exception:
-        pass
-    return fetch_live_quotes(symbols, interval="5m", lookback="5d")
+            return result
+    except Exception:
+        pass    return fetch_live_quotes(symbols, interval="5m", lookback="5d")
 
 @st.cache_data(ttl=900, show_spinner=False)
 def load_processed_histories(symbols: tuple[str, ...]) -> dict[str, pd.DataFrame]:
@@ -447,8 +446,7 @@ def pattern_summary(frame: pd.DataFrame) -> dict[str, object]:
         ("ascending_triangle_20", "ascending triangle", 1),
         ("descending_triangle_20", "descending triangle", -1),        ("symmetrical_triangle_20", "symmetrical triangle", 0),
         ("rising_wedge_20", "rising wedge", -1),
-        ("falling_wedge_20", "falling wedge", 1),
-        ("bull_flag", "bull flag", 1),
+        ("falling_wedge_20", "falling wedge", 1),        ("bull_flag", "bull flag", 1),
         ("bear_flag", "bear flag", -1),
     ]
     chart_hits: list[str] = []
@@ -594,11 +592,11 @@ def render_model_performance() -> None:
     if not EVAL_PATH.exists():
         st.info("Holdout evaluation is not available yet.")
         return
-    try:        metrics = json.loads(EVAL_PATH.read_text(encoding="utf-8"))
+    try:
+        metrics = json.loads(EVAL_PATH.read_text(encoding="utf-8"))
     except Exception:
         st.warning("Holdout evaluation could not be read.")
         return
-
     holdout = metrics.get("aggregate", metrics)
     baseline = metrics.get("baselines", {})
     if not holdout:
@@ -897,8 +895,7 @@ def render_selected_instrument(
 def _market_proxy_series(histories: dict[str, pd.DataFrame], range_name: str = "1Y") -> pd.DataFrame:
     series = []
     for symbol, frame in histories.items():
-        if frame is None or frame.empty or not {"Date", "Close"}.issubset(frame.columns):
-            continue
+        if frame is None or frame.empty or not {"Date", "Close"}.issubset(frame.columns):            continue
         data = frame[["Date", "Close"]].copy()
         data["Date"] = pd.to_datetime(data["Date"], errors="coerce")
         data["Close"] = pd.to_numeric(data["Close"], errors="coerce")
@@ -1047,8 +1044,7 @@ def render_market_home(combined: pd.DataFrame, histories: dict[str, pd.DataFrame
         '<div class="market-country"><span class="market-flag">🇮🇳</span>'
         '<div><div class="market-country-name">India</div>'
         f'<div class="market-subline">NIFTY 50 market · {status} · {now_label}</div></div></div>',
-        unsafe_allow_html=True,
-    )
+        unsafe_allow_html=True,    )
 
     card_specs = [
         ("NIFTY 50 basket", f"{proxy_value:.2f}", (proxy_value/proxy_start-1.0) if proxy_start else 0.0),
@@ -1073,7 +1069,8 @@ def render_market_home(combined: pd.DataFrame, histories: dict[str, pd.DataFrame
         title_col, range_col = st.columns([3.4, 1.1])
         with title_col:
             st.markdown('<div class="tv-panel-title">Market overview</div>', unsafe_allow_html=True)
-        with range_col:            selected_range = st.selectbox(
+        with range_col:
+            selected_range = st.selectbox(
                 "Range", ["1M","3M","6M","1Y","3Y","5Y","ALL"],
                 index=["1M","3M","6M","1Y","3Y","5Y","ALL"].index(st.session_state.get("market_range","1Y")),
                 key="market_range",
@@ -1197,8 +1194,7 @@ def live_dashboard() -> None:
                 stock_live.iloc[0],
                 selected_history,
                 status,
-                LIVE_REFRESH_MINUTES,
-                st.session_state.chart_range,
+                LIVE_REFRESH_MINUTES,                st.session_state.chart_range,
                 st.session_state.show_ema,
                 st.session_state.show_sr,
                 st.session_state.show_patterns,
