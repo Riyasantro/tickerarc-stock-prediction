@@ -170,3 +170,16 @@ The online RL checkpoint and replay memory are stored locally under `models/` an
 When the application is restarted, TickerArc restores the online policy, optimizer state, replay memory and the selected-stock runtime state. It then replays available intraday history since the last saved decision before returning to the current live interval. On a first online-RL launch, the replay window starts with the most recent two calendar days.
 
 The catch-up window depends on the intraday history available from the provider. The online loop never fabricates missing intervals; it replays only the intraday bars that can actually be fetched.
+
+
+## Streamlit Community Cloud deployment
+
+TickerArc can be deployed from the private GitHub repository through Streamlit Community Cloud. Community Cloud supports private repositories when the GitHub connection is granted the additional repository access. The deployment entrypoint is `app.py`. The current dependency pins use Streamlit 1.64.0 and TA-Lib 0.6.8.
+
+For the first deployment, choose Python 3.12 in Streamlit's Advanced settings so the local and cloud environments match. Community Cloud currently defaults to Python 3.12 and supports other maintained Python versions.
+
+The current full application performs substantial startup work: maximum-history download, feature construction, 20Y fit + 4Y validation, 24Y refit, 2Y holdout evaluation, and model loading. Community Cloud currently provides approximately 2 CPU cores maximum and 2.7 GB memory, so this bootstrap can be too heavy for a reliable cold start.
+
+Also note that files generated while an app is running on Community Cloud are not guaranteed to persist across user sessions. Therefore the local online-RL checkpoint/replay files are suitable for local development but are not a reliable persistence layer for the deployed app. For production-style persistent online RL, store checkpoints/replay/runtime state in an external persistent database or object store and load them on startup.
+
+Community Cloud apps without traffic hibernate after 12 hours, so the 1/3-minute online learning loop should not be treated as a continuously running background worker on the free service.
