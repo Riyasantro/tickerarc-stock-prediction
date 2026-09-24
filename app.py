@@ -177,8 +177,7 @@ div[data-baseweb="select"] > div {
 .terminal-bar {
     display:flex;
     justify-content:space-between;
-    align-items:center;
-    background:#080d0a;
+    align-items:center;    background:#080d0a;
     border:1px solid var(--border);
     border-radius:12px;
     padding:10px 14px;
@@ -237,6 +236,56 @@ div[data-baseweb="select"] > div {
     font-size: .76rem;
     margin: 3px 0 8px 0;
 }
+
+/* TradingView-inspired market terminal */
+[data-testid="stSidebar"] { display:none !important; }
+[data-testid="stAppViewContainer"] { background:#000 !important; }
+[data-testid="stHeader"] { background:#000 !important; }
+section.main > div { max-width:100% !important; padding-left:22px !important; padding-right:22px !important; }
+.tv-topbar { display:flex;align-items:center;gap:20px;padding:7px 0 12px;border-bottom:1px solid #1b1d1b;margin-bottom:12px; }
+.tv-brand { font-size:1.02rem;font-weight:900;letter-spacing:.08em;color:#f5f5f5;white-space:nowrap; }
+.tv-brand-mark { font-size:1.15rem;margin-right:7px; }
+.tv-nav-copy { color:#d9dfdb;font-size:.8rem;white-space:nowrap; }
+.tv-nav-muted { color:#858f89;font-size:.8rem;white-space:nowrap; }
+.tv-search { background:#202220;border:1px solid #303330;border-radius:18px;padding:7px 13px;color:#aeb6b2;font-size:.76rem; }
+.market-breadcrumb { color:#76807b;font-size:.74rem;margin:4px 0 8px; }
+.market-country { display:flex;align-items:center;gap:11px; }
+.market-flag { font-size:1.9rem; }
+.market-country-name { font-size:2.2rem;font-weight:900;letter-spacing:-.04em; }
+.market-subline { color:#76807b;font-size:.76rem;margin-top:2px; }
+.index-strip { display:flex;gap:9px;overflow:hidden;margin:18px 0 14px; }
+.index-card { background:#101110;border:1px solid #282a28;border-radius:12px;padding:10px 12px;min-width:177px; }
+.index-card-main { font-size:.74rem;color:#dfe5e1;font-weight:800; }
+.index-card-value { font-size:1rem;font-weight:900;margin-top:2px; }
+.index-up { color:#00d38a !important; } .index-down { color:#ff4b55 !important; }
+.tv-panel-title { font-size:1.25rem;font-weight:880;margin:15px 0 8px;letter-spacing:-.02em; }
+.tv-chart-shell { background:#000;padding-top:2px; }
+.watchlist-panel { background:#090a09;border:1px solid #1f221f;border-radius:9px;overflow:hidden; }
+.watchlist-head { padding:11px 11px;font-size:.82rem;font-weight:850;border-bottom:1px solid #202320;display:flex;justify-content:space-between; }
+.watchlist-sub { color:#818a85;font-size:.63rem;font-weight:600; }
+.watch-item { display:grid;grid-template-columns:1.05fr .9fr .62fr;gap:6px;padding:6px 8px;border-bottom:1px solid #181b18;align-items:center; }
+.watch-item-symbol { font-weight:800;font-size:.69rem;color:#e4e9e5; }
+.watch-item-price { text-align:right;color:#d2d8d4;font-size:.67rem; }
+.watch-item-change { text-align:right;font-size:.67rem; }
+.watch-item button { padding:0 !important;background:transparent !important;color:#e4e9e5 !important;border:0 !important;text-align:left !important;box-shadow:none !important; }
+.watch-detail { padding:12px;border-top:1px solid #202320; }
+.watch-detail-symbol { font-weight:900;font-size:.93rem; }
+.watch-detail-price { font-weight:900;font-size:1.55rem;margin-top:2px; }
+.breadth-wrap { background:#070807;border:1px solid #1c1f1c;border-radius:9px;padding:12px; }
+.breadth-bar { display:flex;width:100%;height:12px;border-radius:8px;overflow:hidden;background:#20231f;margin:8px 0 4px; }
+.breadth-adv { background:#18b990; } .breadth-dec { background:#ef3d4a; }
+.breadth-labels { display:flex;justify-content:space-between;color:#858e89;font-size:.68rem; }
+.list-panel { background:#070807;border-top:1px solid #1b1e1b;border-bottom:1px solid #1b1e1b; }
+.quote-list-row { display:grid;grid-template-columns:1.55fr .9fr .75fr .62fr;gap:8px;align-items:center;padding:7px 2px;border-bottom:1px solid #151815;font-size:.71rem; }
+.quote-list-row:last-child { border-bottom:0; }
+.quote-symbol { font-weight:820;color:#e7ece8; }
+.quote-price,.quote-change,.quote-tag { text-align:right;font-variant-numeric:tabular-nums; }
+.quote-price { color:#d5dbd7; } .quote-tag { color:#7e8882;font-size:.63rem; }
+.market-nav [data-testid="stRadio"] > div { gap:6px !important; }
+.market-nav [role="radiogroup"] > label { border:1px solid #242724;background:#0d0e0d;border-radius:18px;padding:5px 10px !important; }
+.market-nav [role="radiogroup"] > label:has(input:checked) { border-color:#4b6155;background:#16211a; }
+.market-nav [role="radiogroup"] > label > div:last-child { color:#bfc8c2 !important;font-size:.71rem; }
+
 </style>
 """,
     unsafe_allow_html=True,
@@ -357,8 +406,7 @@ def bootstrap_project() -> None:
                 model,
                 scaler,
                 frames,
-                sequence_length=int(metadata["sequence_length"]),
-            )
+                sequence_length=int(metadata["sequence_length"]),            )
             metrics["baselines"] = evaluate_baselines(frames)
             EVAL_PATH.write_text(json.dumps(metrics, indent=2), encoding="utf-8")
             status.update(label="2-year holdout evaluation complete", state="complete")
@@ -537,8 +585,7 @@ def add_potential_scores(
     out["potential"] = out.apply(
         lambda row: potential_score(
             float(row.get("up_probability", 0.0)),
-            float(row.get("return_5d", 0.0)),
-            float(row.get("activity_score", 0.0)),
+            float(row.get("return_5d", 0.0)),            float(row.get("activity_score", 0.0)),
             float(row.get("volume_ratio", 0.0)),
             float(row.get("pattern_score", 0.0)),
             min(float(row.get("volatility_5d", 0.0)) * 100, 30),
@@ -717,8 +764,7 @@ def render_selected_instrument(
     if focus_title:
         fc1, fc2 = st.columns([5, 1])
         with fc1:
-            st.markdown(f'<div class="focused-label">Focused on chart · {focus_title}</div>', unsafe_allow_html=True)
-        with fc2:
+            st.markdown(f'<div class="focused-label">Focused on chart · {focus_title}</div>', unsafe_allow_html=True)        with fc2:
             st.button("Clear focus", key=f"clear_focus_{selected_symbol}", on_click=_clear_chart_focus, use_container_width=True)
 
     with st.container():
@@ -850,6 +896,279 @@ def render_selected_instrument(
             unsafe_allow_html=True,
         )
 
+
+def _market_proxy_series(histories: dict[str, pd.DataFrame], range_name: str = "1Y") -> pd.DataFrame:
+    series = []
+    for symbol, frame in histories.items():
+        if frame is None or frame.empty or not {"Date", "Close"}.issubset(frame.columns):
+            continue
+        data = frame[["Date", "Close"]].copy()
+        data["Date"] = pd.to_datetime(data["Date"], errors="coerce")
+        data["Close"] = pd.to_numeric(data["Close"], errors="coerce")
+        data = data.dropna().drop_duplicates("Date").set_index("Date")["Close"]
+        if len(data) >= 20:
+            series.append(data.rename(symbol))
+    if not series:
+        return pd.DataFrame(columns=["Date", "Value"])
+    close = pd.concat(series, axis=1).sort_index().ffill()
+    normalized = close.div(close.iloc[0].replace(0, np.nan)).mul(100)
+    composite = normalized.mean(axis=1, skipna=True).dropna()
+    days_map = {"1M":31, "3M":93, "6M":186, "1Y":365, "3Y":1095, "5Y":1825, "ALL":None}
+    days = days_map.get(range_name)
+    if days is not None and not composite.empty:
+        composite = composite[composite.index >= composite.index.max() - pd.Timedelta(days=days)]
+    return composite.rename("Value").reset_index().rename(columns={"index":"Date"})
+
+def make_market_proxy_chart(histories: dict[str, pd.DataFrame], range_name: str = "1Y") -> go.Figure:
+    data = _market_proxy_series(histories, range_name)
+    fig = go.Figure()
+    if data.empty:
+        return fig
+    rising = float(data["Value"].iloc[-1]) >= float(data["Value"].iloc[0])
+    line_color = "#00e676" if rising else "#ff4b55"
+    fill_color = "rgba(0,230,118,.08)" if rising else "rgba(255,75,85,.08)"
+    fig.add_trace(go.Scatter(
+        x=data["Date"], y=data["Value"], mode="lines",
+        name="NIFTY 50 basket", line={"color":line_color,"width":2.0},
+        fill="tozeroy", fillcolor=fill_color,
+        hovertemplate="%{x|%d %b %Y}<br>Basket index %{y:.2f}<extra></extra>",
+    ))
+    fig.update_layout(
+        paper_bgcolor="#000", plot_bgcolor="#000", height=385,
+        margin={"l":0,"r":8,"t":5,"b":0}, showlegend=False,
+        hovermode="x unified", dragmode="pan",
+    )
+    fig.update_xaxes(showgrid=False, zeroline=False, color="#707873")
+    fig.update_yaxes(showgrid=True, gridcolor="#111511", zeroline=False, color="#707873", side="right")
+    return fig
+
+def render_tv_topbar() -> None:
+    nav = ["Overview", "Most Active", "Popular", "Model Signals", "Potential", "Low Attention"]
+    current = st.session_state.get("market_section", "Overview")
+    st.markdown(
+        '<div class="tv-topbar">'
+        '<div class="tv-brand"><span class="tv-brand-mark">◼</span>TICKERARC</div>'
+        '<div class="tv-nav-copy">Markets</div>'
+        '<div class="tv-nav-copy">Screeners</div>'
+        '<div class="tv-nav-copy">Models</div>'
+        '<div class="tv-nav-muted">Analytics</div>'
+        '<div class="tv-search">⌕&nbsp;&nbsp;Search symbol</div>'
+        '<div style="flex:1"></div>'
+        '<div class="tv-nav-muted">NIFTY 50</div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+    with st.container():
+        selected = st.radio(
+            "Market",
+            nav,
+            index=nav.index(current) if current in nav else 0,
+            key="market_section",
+            horizontal=True,
+            label_visibility="collapsed",
+        )
+    st.session_state.market_section = selected
+
+def render_watchlist_panel(combined: pd.DataFrame) -> None:
+    st.markdown('<div class="watchlist-panel">', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="watchlist-head"><span>Watchlist</span><span class="watchlist-sub">NIFTY 50 · LIVE</span></div>',
+        unsafe_allow_html=True,
+    )
+    view = combined.sort_values(["activity_score","volume_ratio"], ascending=False).head(10)
+    for _, item in view.iterrows():
+        symbol = str(item["symbol"])
+        price = float(item["price"])
+        change = float(item["change_pct"])
+        cls = "index-up" if change >= 0 else "index-down"
+        c1, c2 = st.columns([1.05, 1.45])
+        with c1:
+            st.button(symbol.replace(".NS",""), key=f"watch_select_{symbol}", on_click=_select_stock, args=(symbol,), use_container_width=True)
+        with c2:
+            st.markdown(
+                f'<div class="watch-item-price">₹{price:,.2f} '
+                f'<span class="watch-item-change {cls}">{change:+.2f}%</span></div>',
+                unsafe_allow_html=True,
+            )
+    selected_symbol = st.session_state.get("selected_symbol")
+    row = combined[combined["symbol"] == selected_symbol]
+    if not row.empty:
+        item = row.iloc[0]
+        change = float(item["change_pct"])
+        cls = "index-up" if change >= 0 else "index-down"
+        st.markdown(
+            '<div class="watch-detail">'
+            f'<div class="watch-detail-symbol">{selected_symbol.replace(".NS","")} · NSE</div>'
+            f'<div class="watch-detail-price">₹{float(item["price"]):,.2f}</div>'
+            f'<div class="{cls}" style="font-size:.77rem;font-weight:800;">{change:+.2f}% today</div>'
+            f'<div style="color:#7e8882;font-size:.67rem;margin-top:6px;">'
+            f'1D {float(item.get("change_pct",0)):+.2f}% · '
+            f'5D model {float(item.get("return_5d",0))*100:+.2f}% · '
+            f'Up {float(item.get("up_probability",0))*100:.0f}% · '
+            f'Potential {float(item.get("potential",0)):.0f}/100'
+            '</div></div>',
+            unsafe_allow_html=True,
+        )
+    st.markdown("</div>", unsafe_allow_html=True)
+
+def _render_ranked_rows(frame: pd.DataFrame, metric: str, limit: int = 6) -> None:
+    st.markdown('<div class="list-panel">', unsafe_allow_html=True)
+    for _, item in frame.head(limit).iterrows():
+        symbol = str(item["symbol"]).replace(".NS","")
+        price = float(item["price"])
+        change = float(item["change_pct"])
+        cls = "index-up" if change >= 0 else "index-down"
+        if metric == "Volume":
+            val = float(item.get("session_volume", 0))
+            tag = f"{val/1e6:.2f}M"
+        elif metric == "Volatility":
+            val = float(item.get("volatility_20d", 0))*100
+            tag = f"{val:.2f}%"
+        else:
+            val = float(item.get("return_5d", 0))*100
+            tag = f"{val:+.2f}%"
+        st.markdown(
+            f'<div class="quote-list-row"><div class="quote-symbol">{symbol}</div>'
+            f'<div class="quote-price">₹{price:,.2f}</div>'
+            f'<div class="quote-change {cls}">{change:+.2f}%</div>'
+            f'<div class="quote-tag">{tag}</div></div>',
+            unsafe_allow_html=True,
+        )
+    st.markdown("</div>", unsafe_allow_html=True)
+
+def render_market_home(combined: pd.DataFrame, histories: dict[str, pd.DataFrame]) -> None:
+    status, now_label = market_state()
+    advances = int((combined["change_pct"] > 0).sum())
+    declines = int((combined["change_pct"] < 0).sum())
+    unchanged = int((combined["change_pct"] == 0).sum())
+    avg_up = float(pd.to_numeric(combined["up_probability"], errors="coerce").mean())
+    proxy = _market_proxy_series(histories, st.session_state.get("market_range","1Y"))
+    proxy_value = float(proxy["Value"].iloc[-1]) if not proxy.empty else 100.0
+    proxy_start = float(proxy["Value"].iloc[0]) if not proxy.empty else 100.0
+
+    st.markdown('<div class="market-breadcrumb">Markets &nbsp;/&nbsp; India</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="market-country"><span class="market-flag">🇮🇳</span>'
+        '<div><div class="market-country-name">India</div>'
+        f'<div class="market-subline">NIFTY 50 market · {status} · {now_label}</div></div></div>',
+        unsafe_allow_html=True,
+    )
+
+    card_specs = [
+        ("NIFTY 50 basket", f"{proxy_value:.2f}", (proxy_value/proxy_start-1.0) if proxy_start else 0.0),
+        ("Advancers / decliners", f"{advances} / {declines}", 0.0),
+        ("Avg model up", f"{avg_up*100:.1f}%", 0.0),
+        ("Activity", f"{float(combined['activity_score'].mean()):.0f}/100", 0.0),
+        ("Potential", f"{float(combined['potential'].mean()):.0f}/100", 0.0),
+    ]
+    html = ['<div class="index-strip">']
+    for label, value, change in card_specs:
+        cls = "index-up" if change >= 0 else "index-down"
+        sub = f"{change*100:+.2f}%" if label == "NIFTY 50 basket" else "TickerArc composite"
+        html.append(
+            f'<div class="index-card"><div class="index-card-main">{label}</div>'
+            f'<div class="index-card-value">{value}</div><div class="{cls}" style="font-size:.65rem;">{sub}</div></div>'
+        )
+    html.append("</div>")
+    st.markdown("".join(html), unsafe_allow_html=True)
+
+    left, right = st.columns([4.65, 1.32], gap="small")
+    with left:
+        title_col, range_col = st.columns([3.4, 1.1])
+        with title_col:
+            st.markdown('<div class="tv-panel-title">Market overview</div>', unsafe_allow_html=True)
+        with range_col:
+            selected_range = st.selectbox(
+                "Range", ["1M","3M","6M","1Y","3Y","5Y","ALL"],
+                index=["1M","3M","6M","1Y","3Y","5Y","ALL"].index(st.session_state.get("market_range","1Y")),
+                key="market_range",
+                label_visibility="collapsed",
+            )
+            st.session_state.market_range = selected_range
+        st.markdown('<div class="tv-chart-shell">', unsafe_allow_html=True)
+        st.plotly_chart(
+            make_market_proxy_chart(histories, selected_range),
+            use_container_width=True,
+            config={"displaylogo":False,"scrollZoom":True,"modeBarButtonsToRemove":["lasso2d","select2d"]},
+        )
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    with right:
+        render_watchlist_panel(combined)
+
+    b1, b2 = st.columns([1.0, 1.35], gap="small")
+    with b1:
+        st.markdown('<div class="tv-panel-title">Market breadth</div>', unsafe_allow_html=True)
+        total = max(advances + declines + unchanged, 1)
+        adv_w, dec_w = advances/total, declines/total
+        st.markdown(
+            f'<div class="breadth-wrap">'
+            f'<div style="font-size:.7rem;color:#9da7a1;">Advancing&nbsp; {advances:,} &nbsp;&nbsp; Declining&nbsp; {declines:,}</div>'
+            f'<div class="breadth-bar"><div class="breadth-adv" style="width:{adv_w*100:.2f}%"></div>'
+            f'<div class="breadth-dec" style="width:{dec_w*100:.2f}%"></div></div>'
+            f'<div class="breadth-labels"><span>{adv_w*100:.0f}% advancing</span><span>{dec_w*100:.0f}% declining</span></div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+        stock_count = max(len(histories), 1)
+        ma20 = sum(
+            1 for f in histories.values()
+            if f is not None and len(f) >= 20 and float(pd.to_numeric(f["Close"],errors="coerce").iloc[-1]) >= float(pd.to_numeric(f["Close"],errors="coerce").tail(20).mean())
+        )
+        ma50 = sum(
+            1 for f in histories.values()
+            if f is not None and len(f) >= 50 and float(pd.to_numeric(f["Close"],errors="coerce").iloc[-1]) >= float(pd.to_numeric(f["Close"],errors="coerce").tail(50).mean())
+        )
+        st.markdown(
+            f'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;">'
+            f'<div class="breadth-wrap"><div style="color:#7f8883;font-size:.64rem;">Above 20D average</div><div style="font-size:1.2rem;font-weight:850;">{ma20/stock_count*100:.0f}%</div></div>'
+            f'<div class="breadth-wrap"><div style="color:#7f8883;font-size:.64rem;">Above 50D average</div><div style="font-size:1.2rem;font-weight:850;">{ma50/stock_count*100:.0f}%</div></div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+    with b2:
+        st.markdown('<div class="tv-panel-title">New highs & lows</div>', unsafe_allow_html=True)
+        st.markdown('<div class="list-panel">', unsafe_allow_html=True)
+        for lb in (20, 60, 120, 250):
+            highs = lows = 0
+            for f in histories.values():
+                if f is None or len(f) < lb + 1:
+                    continue
+                close = pd.to_numeric(f["Close"], errors="coerce").dropna()
+                if len(close) < lb + 1:
+                    continue
+                latest = float(close.iloc[-1])
+                prior = close.iloc[-lb-1:-1]
+                highs += int(latest >= float(prior.max()))
+                lows += int(latest <= float(prior.min()))
+            st.markdown(
+                f'<div class="quote-list-row"><div class="quote-symbol">{lb}D</div>'
+                f'<div class="quote-tag">New highs</div><div class="quote-change index-up">{highs}</div>'
+                f'<div class="quote-tag">New lows <span class="index-down">{lows}</span></div></div>',
+                unsafe_allow_html=True,
+            )
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    st.markdown('<div class="tv-panel-title">Highest volume stocks</div>', unsafe_allow_html=True)
+    _render_ranked_rows(combined.sort_values("session_volume", ascending=False), "Volume")
+
+    c1, c2 = st.columns(2, gap="large")
+    with c1:
+        st.markdown('<div class="tv-panel-title">Most volatile stocks</div>', unsafe_allow_html=True)
+        _render_ranked_rows(combined.sort_values("volatility_20d", ascending=False), "Volatility")
+    with c2:
+        st.markdown('<div class="tv-panel-title">Model signals</div>', unsafe_allow_html=True)
+        _render_ranked_rows(combined.sort_values(["up_probability","potential"], ascending=False), "Model")
+
+    g1, g2 = st.columns(2, gap="large")
+    with g1:
+        st.markdown('<div class="tv-panel-title">Stock gainers</div>', unsafe_allow_html=True)
+        _render_ranked_rows(combined.sort_values("change_pct", ascending=False), "Model", limit=7)
+    with g2:
+        st.markdown('<div class="tv-panel-title">Stock losers</div>', unsafe_allow_html=True)
+        _render_ranked_rows(combined.sort_values("change_pct", ascending=True), "Model", limit=7)
+
+
 @st.fragment(run_every="1min")
 def live_dashboard() -> None:
     status, now_label = market_state()
@@ -865,6 +1184,8 @@ def live_dashboard() -> None:
         st.warning("No combined market screen is available.")
         return
 
+    render_tv_topbar()
+
     selected_symbol = st.session_state.selected_symbol
     if st.session_state.market_view == "stock":
         selected_live_rows = live[live["symbol"] == selected_symbol]
@@ -873,56 +1194,53 @@ def live_dashboard() -> None:
         if selected_history is None or selected_live_rows.empty or stock_live.empty:
             st.warning("Selected instrument is not currently available.")
             return
-        render_selected_instrument(
-            selected_symbol,
-            selected_live_rows.iloc[0].to_dict(),
-            stock_live.iloc[0],
-            selected_history,
-            status,
-            LIVE_REFRESH_MINUTES,
-            st.session_state.chart_range,
-            st.session_state.show_ema,
-            st.session_state.show_sr,
-            st.session_state.show_patterns,
-        )
+
+        left_stock, right_watch = st.columns([4.65, 1.32], gap="small")
+        with left_stock:
+            render_selected_instrument(
+                selected_symbol,
+                selected_live_rows.iloc[0].to_dict(),
+                stock_live.iloc[0],
+                selected_history,
+                status,
+                LIVE_REFRESH_MINUTES,
+                st.session_state.chart_range,
+                st.session_state.show_ema,
+                st.session_state.show_sr,
+                st.session_state.show_patterns,
+            )
+        with right_watch:
+            render_watchlist_panel(combined)
         return
-
-    advances = int((combined["change_pct"] > 0).sum())
-    declines = int((combined["change_pct"] < 0).sum())
-    h1 = combined.nlargest(1, "activity_score").iloc[0]
-    h2 = combined.nlargest(1, "up_probability").iloc[0]
-    h3 = combined.nlargest(1, "potential").iloc[0]
-
-    c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("Market", status)
-    c2.metric("Advancers / Decliners", f"{advances} / {declines}")
-    c3.metric("Activity leader", str(h1["symbol"]))
-    c4.metric("Forecast leader", str(h2["symbol"]), f"{float(h2['up_probability']) * 100:.0f}%")
-    c5.metric("Potential leader", str(h3["symbol"]), f"{float(h3['potential']):.0f}/100")
-    st.caption(now_label)
 
     categories = build_market_categories(combined)
     section = st.session_state.market_section
-    descriptions = {
-        "Most Active": "Highest cross-sectional activity using volume, movement, range and turnover proxies.",
-        "Popular": "Popularity is represented by the project's volume and turnover attention proxy.",
-        "Model Signals": "Stocks currently highest on modeled upward probability and potential score.",
-        "Potential": "Heuristic potential from model probability, expected return, activity, volume, patterns and risk penalty.",
-        "Low Attention": "Lower-attention instruments kept separate from the active and model-led screens.",
-    }
-
     if section == "Overview":
-        for name, frame in categories.items():
-            render_stock_cards(frame, histories, name, descriptions[name], limit=5, key_prefix=f"overview_{name.lower().replace(' ', '_')}")
-    else:
-        render_stock_cards(
-            categories[section],
-            histories,
-            section,
-            descriptions[section],
-            limit=None,
-            key_prefix=f"category_{section.lower().replace(' ', '_')}",
-        )
+        render_market_home(combined, histories)
+        return
+
+    frame = categories.get(section, combined)
+    st.markdown('<div class="market-breadcrumb">Markets / India / NIFTY 50</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="market-country-name">{section}</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="market-subline">Cross-sectional NIFTY 50 screen with live quote activity and TickerArc model outputs.</div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown('<div class="tv-panel-title">Stocks</div>', unsafe_allow_html=True)
+    render_stock_cards(
+        frame,
+        histories,
+        section,
+        {
+            "Most Active":"Highest cross-sectional activity using volume, movement, range and turnover proxies.",
+            "Popular":"Popularity is represented by the project's volume and turnover attention proxy.",
+            "Model Signals":"Stocks highest on modeled upward probability and potential score.",
+            "Potential":"Heuristic potential from model probability, expected return, activity, volume, patterns and risk penalty.",
+            "Low Attention":"Lower-attention instruments kept separate from active and model-led screens.",
+        }.get(section, ""),
+        limit=None,
+        key_prefix=f"tv_{section.lower().replace(' ','_')}",
+    )
 
 for state_key, default in [
     ("market_view", "market"),
@@ -933,66 +1251,9 @@ for state_key, default in [
     ("show_ema", True),
     ("show_sr", True),
     ("show_patterns", True),
+    ("market_range", "1Y"),
 ]:
     if state_key not in st.session_state:
         st.session_state[state_key] = default
-
-with st.sidebar:
-    st.markdown(
-        '<div class="terminal-brand">TICKERARC</div>'
-        '<div class="small-muted">NIFTY 50 MARKET</div>',
-        unsafe_allow_html=True,
-    )
-    st.markdown("---")
-    st.markdown("**MARKET**")
-    st.radio(
-        "Market",
-        ["Overview", "Most Active", "Popular", "Model Signals", "Potential", "Low Attention"],
-        key="market_section",
-        label_visibility="collapsed",
-    )
-    st.markdown("---")
-
-    current_symbol = st.session_state.selected_symbol
-    current_index = NIFTY50_SYMBOLS.index(current_symbol) if current_symbol in NIFTY50_SYMBOLS else 0
-    st.selectbox(
-        "Instrument",
-        NIFTY50_SYMBOLS,
-        index=current_index,
-        key="stock_selector",
-        on_change=_sidebar_stock_changed,
-    )
-
-    if st.session_state.market_view == "stock":
-        if st.button("← Back to market", use_container_width=True):
-            st.session_state.market_view = "market"
-            st.session_state.chart_focus = None
-            st.rerun()
-
-try:
-    bootstrap_project()
-except Exception as exc:
-    st.error(f"TickerArc initialization failed: {exc}")
-    st.stop()
-
-model_bundle = get_model_bundle()
-if model_bundle is None:
-    st.error("Model checkpoint is not available.")
-    st.stop()
-
-histories = load_processed_histories(tuple(NIFTY50_SYMBOLS))
-
-st.markdown(
-    """
-    <div class="terminal-bar">
-        <div>
-            <span class="terminal-brand">TICKERARC</span>
-            <span class="terminal-status"> · NIFTY 50 MARKET DESK</span>
-        </div>
-        <div class="terminal-status"><span class="live-dot"></span>LIVE FEED</div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
 
 live_dashboard()
