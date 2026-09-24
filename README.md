@@ -238,3 +238,8 @@ Stage 2 adds the interactive trading chart layer: green/red OHLC candlesticks, E
 ## Stage 3 visual findings
 
 Stage 3 adds an interactive findings layer to the selected-instrument workspace. Forecast, pattern, candlestick, trend, momentum, volume and support/resistance findings are presented as actionable cards. Each finding has a chart date; selecting **Focus on chart** zooms the trading chart to that area and marks the selected candle/date. The finding engine keeps the underlying heuristic/TA-Lib detections unchanged and makes their evidence easier to inspect visually.
+
+
+## Stage 4 production-terminal polish
+
+Stage 4 removes development-oriented controls from the visible trading workspace. The terminal now uses a fixed one-minute live refresh internally, keeps market navigation and instrument selection as the primary sidebar functions, moves chart controls into the selected-instrument workspace, removes rebuild/model/system-health controls from the user view, and presents the selected stock with a compact NSE/NIFTY 50 header, market context, forecast, patterns and strategy views.
