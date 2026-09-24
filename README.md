@@ -228,3 +228,8 @@ The sidebar is reserved for workspace controls, live market findings and system 
 The application code is structured for production-style operation: cached market reads, frozen supervised inference after model creation, explicit holdout evaluation, isolated online RL state, provider timestamps, health indicators and failure handling.
 
 The remaining production infrastructure requirement is persistent external storage for online-RL checkpoints/replay/runtime state when deployed on an ephemeral hosting platform. The application should not assume that local files inside such a service are durable across restarts. A persistent object store or database is required for durable cloud RL state.
+
+
+## Stage 2 chart engine
+
+Stage 2 adds the interactive trading chart layer: green/red OHLC candlesticks, EMA 20/50, support and resistance, volume, RSI 14, direct chart annotations for detected chart/candlestick patterns, double-top/double-bottom pivot connectors and neckline levels, and compact candlesticks in market cards.
