@@ -233,3 +233,8 @@ The remaining production infrastructure requirement is persistent external stora
 ## Stage 2 chart engine
 
 Stage 2 adds the interactive trading chart layer: green/red OHLC candlesticks, EMA 20/50, support and resistance, volume, RSI 14, direct chart annotations for detected chart/candlestick patterns, double-top/double-bottom pivot connectors and neckline levels, and compact candlesticks in market cards.
+
+
+## Stage 3 visual findings
+
+Stage 3 adds an interactive findings layer to the selected-instrument workspace. Forecast, pattern, candlestick, trend, momentum, volume and support/resistance findings are presented as actionable cards. Each finding has a chart date; selecting **Focus on chart** zooms the trading chart to that area and marks the selected candle/date. The finding engine keeps the underlying heuristic/TA-Lib detections unchanged and makes their evidence easier to inspect visually.
