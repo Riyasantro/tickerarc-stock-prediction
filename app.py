@@ -42,7 +42,9 @@ from src.models.trainer import (
 from src.models.benchmarks import evaluate_baselines
 from src.models.walk_forward import walk_forward_evaluate
 from src.rl.online_loop import OnlineRLManager
-from src.ui.trading_chart import make_trading_chart, mini_candlestick_svg
+from src.ui.trading_chart import mini_candlestick_svg
+from src.ui.trading_chart_focus import make_focused_trading_chart
+from src.ui.findings import build_visual_findings
 
 ROOT = Path(__file__).resolve().parent
 MODEL_DIR = ROOT / "models"
@@ -172,6 +174,46 @@ div[data-baseweb="select"] > div {
 .health-warn { color: var(--amber); font-weight: 800; }
 .small-muted { color: var(--muted); font-size: .79rem; }
 .disclaimer { color: var(--muted); font-size: .74rem; padding: 8px 0; }
+.finding-grid {
+    background: #080d0a;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px;
+    margin: 10px 0 14px 0;
+}
+.finding-card {
+    background: #0c120e;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    padding: 10px 12px;
+    min-height: 82px;
+}
+.finding-card-bull { border-left: 3px solid var(--green); }
+.finding-card-bear { border-left: 3px solid var(--red); }
+.finding-card-neutral { border-left: 3px solid var(--amber); }
+.finding-category {
+    color: var(--muted);
+    font-size: .67rem;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+}
+.finding-title {
+    font-weight: 800;
+    font-size: .92rem;
+    margin-top: 2px;
+}
+.finding-detail {
+    color: var(--muted);
+    font-size: .73rem;
+    margin-top: 3px;
+}
+.focused-label {
+    color: var(--amber);
+    font-weight: 750;
+    font-size: .76rem;
+    margin: 3px 0 8px 0;
+}
+
 </style>
 """,
     unsafe_allow_html=True,
@@ -579,11 +621,23 @@ def _sparkline_svg(history: pd.DataFrame, points: int = 34) -> str:
 def _select_stock(symbol: str) -> None:
     st.session_state.selected_symbol = symbol
     st.session_state.market_view = "stock"
+    st.session_state.chart_focus = None
+
+def _focus_finding(finding: dict[str, object]) -> None:
+    st.session_state.chart_focus = {
+        "date": str(finding["date"]),
+        "title": str(finding["title"]),
+        "id": str(finding["id"]),
+    }
+
+def _clear_chart_focus() -> None:
+    st.session_state.chart_focus = None
 
 
 def _sidebar_stock_changed() -> None:
     st.session_state.selected_symbol = st.session_state.stock_selector
     st.session_state.market_view = "stock"
+    st.session_state.chart_focus = None
 
 
 def build_market_categories(combined: pd.DataFrame) -> dict[str, pd.DataFrame]:
@@ -991,6 +1045,8 @@ if "selected_symbol" not in st.session_state:
     st.session_state.selected_symbol = NIFTY50_SYMBOLS[0]
 if "market_section" not in st.session_state:
     st.session_state.market_section = "Overview"
+if "chart_focus" not in st.session_state:
+    st.session_state.chart_focus = None
 
 with st.sidebar:
     st.markdown("### Workspace")
@@ -1065,6 +1121,10 @@ def render_selected_instrument(
         prediction,
         patterns,
     )
+    findings = build_visual_findings(history, row.to_dict())
+    focus = st.session_state.get("chart_focus")
+    focus_date = focus.get("date") if isinstance(focus, dict) else None
+    focus_title = focus.get("title") if isinstance(focus, dict) else None
 
     top_left, top_right = st.columns([4, 1])
     with top_left:
@@ -1075,6 +1135,7 @@ def render_selected_instrument(
     with top_right:
         if st.button("← Market", use_container_width=True):
             st.session_state.market_view = "market"
+            st.session_state.chart_focus = None
             st.rerun()
 
     q1, q2, q3, q4, q5 = st.columns(5)
@@ -1089,13 +1150,15 @@ def render_selected_instrument(
     q5.metric("Potential", f"{float(result.potential):.0f}/100")
 
     st.plotly_chart(
-        make_trading_chart(
+        make_focused_trading_chart(
             history,
             selected_symbol,
             chart_range,
             show_ema=show_ema,
             show_sr=show_sr,
             show_patterns=show_patterns,
+            focus_date=focus_date,
+            focus_label=focus_title,
         ),
         use_container_width=True,
         config={
@@ -1104,6 +1167,43 @@ def render_selected_instrument(
             "modeBarButtonsToRemove": ["lasso2d", "select2d"],
         },
     )
+
+    st.markdown('<div class="section-title">Market findings</div>', unsafe_allow_html=True)
+    if focus_title:
+        fc1, fc2 = st.columns([5, 1])
+        with fc1:
+            st.markdown(
+                f'<div class="focused-label">Focused on chart · {focus_title}</div>',
+                unsafe_allow_html=True,
+            )
+        with fc2:
+            st.button("Clear focus", key=f"clear_focus_{selected_symbol}", on_click=_clear_chart_focus, use_container_width=True)
+
+    with st.container():
+        st.markdown('<div class="finding-grid">', unsafe_allow_html=True)
+        visible_findings = findings[:9]
+        for start_idx in range(0, len(visible_findings), 3):
+            cols = st.columns(3)
+            for col, finding in zip(cols, visible_findings[start_idx:start_idx + 3], strict=False):
+                tone = str(finding["tone"])
+                css_tone = f"finding-card-{tone}" if tone in {"bull", "bear", "neutral"} else "finding-card-neutral"
+                with col:
+                    st.markdown(
+                        f'<div class="finding-card {css_tone}">'
+                        f'<div class="finding-category">{finding["category"]}</div>'
+                        f'<div class="finding-title">{finding["title"]}</div>'
+                        f'<div class="finding-detail">{finding["detail"]}</div>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+                    st.button(
+                        "Focus on chart",
+                        key=f"finding_{selected_symbol}_{finding['id']}",
+                        use_container_width=True,
+                        on_click=_focus_finding,
+                        args=(finding,),
+                    )
+        st.markdown('</div>', unsafe_allow_html=True)
 
     details_tab, signals_tab, performance_tab, rl_tab = st.tabs(
         ["Instrument overview", "Signals & structure", "Model performance", "Online RL"]
