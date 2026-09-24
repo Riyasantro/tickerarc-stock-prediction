@@ -342,3 +342,54 @@ def make_trading_chart(
         )
     fig.update_yaxes(range=[0, 100], row=3, col=1)
     return fig
+
+
+def mini_candlestick_svg(frame: pd.DataFrame, points: int = 18) -> str:
+    """Compact SVG OHLC chart used inside instrument cards."""
+    if frame is None or frame.empty:
+        return ""
+    data = frame.tail(points).copy()
+    required = ["Open", "High", "Low", "Close"]
+    if any(column not in data for column in required):
+        return ""
+
+    width, height = 168, 42
+    highs = pd.to_numeric(data["High"], errors="coerce")
+    lows = pd.to_numeric(data["Low"], errors="coerce")
+    lo = float(lows.min())
+    hi = float(highs.max())
+    span = max(hi - lo, 1e-9)
+    slot = width / max(len(data), 1)
+    body_width = max(slot * 0.55, 2.0)
+    svg_parts = [
+        f'<svg viewBox="0 0 {width} {height}" width="100%" height="{height}" '
+        'preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">'
+    ]
+
+    def y(value: float) -> float:
+        return height - ((float(value) - lo) / span) * (height - 4) - 2
+
+    for index, (_, row) in enumerate(data.iterrows()):
+        open_ = float(row["Open"])
+        close = float(row["Close"])
+        high = float(row["High"])
+        low = float(row["Low"])
+        x = index * slot + slot / 2
+        color = "#00e676" if close >= open_ else "#ff5c5c"
+        y_high = y(high)
+        y_low = y(low)
+        y_open = y(open_)
+        y_close = y(close)
+        body_y = min(y_open, y_close)
+        body_h = max(abs(y_close - y_open), 1.25)
+        svg_parts.append(
+            f'<line x1="{x:.2f}" x2="{x:.2f}" y1="{y_high:.2f}" y2="{y_low:.2f}" '
+            f'stroke="{color}" stroke-width="1"/>'
+        )
+        svg_parts.append(
+            f'<rect x="{x - body_width / 2:.2f}" y="{body_y:.2f}" '
+            f'width="{body_width:.2f}" height="{body_h:.2f}" fill="{color}" rx="0.6"/>'
+        )
+
+    svg_parts.append("</svg>")
+    return "".join(svg_parts)
