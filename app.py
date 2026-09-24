@@ -1189,13 +1189,15 @@ def live_dashboard() -> None:
             return
 
         left_stock, right_watch = st.columns([4.65, 1.32], gap="small")
-        with left_stock:\n            render_selected_instrument(
+        with left_stock:
+            render_selected_instrument(
                 selected_symbol,
                 selected_live_rows.iloc[0].to_dict(),
                 stock_live.iloc[0],
                 selected_history,
                 status,
-                LIVE_REFRESH_MINUTES,\n                st.session_state.chart_range,
+                LIVE_REFRESH_MINUTES,
+                st.session_state.chart_range,
                 st.session_state.show_ema,
                 st.session_state.show_sr,
                 st.session_state.show_patterns,
