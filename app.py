@@ -18,6 +18,7 @@ from zoneinfo import ZoneInfo
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import streamlit as st
 
 from config.universe import NIFTY50_SYMBOLS
@@ -61,40 +62,115 @@ st.set_page_config(
 st.markdown(
     """
 <style>
+:root {
+    --bg: #060806;
+    --panel: #0b0f0d;
+    --panel-2: #101612;
+    --border: #1f2b23;
+    --text: #ecf7ef;
+    --muted: #87958c;
+    --green: #00e676;
+    --red: #ff5c5c;
+    --amber: #ffc857;
+}
 html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
-    background: #000 !important;
-    color: #fff !important;
+    background: var(--bg) !important;
+    color: var(--text) !important;
 }
 [data-testid="stSidebar"] {
-    background: #050505 !important;
-    border-right: 1px solid #222;
+    background: #080b09 !important;
+    border-right: 1px solid var(--border);
 }
 [data-testid="stMetric"] {
-    background: #090909;
-    border: 1px solid #252525;
-    padding: 10px;
-    border-radius: 4px;
+    background: var(--panel) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 10px !important;
+    padding: 14px !important;
 }
+[data-testid="stMetricLabel"] { color: var(--muted) !important; }
+[data-testid="stMetricValue"] { color: var(--text) !important; }
 .stButton > button {
-    background: #fff !important;
-    color: #000 !important;
-    border: 1px solid #fff !important;
+    background: var(--green) !important;
+    color: #001a0c !important;
+    border: 0 !important;
+    border-radius: 8px !important;
+    font-weight: 700 !important;
 }
-.stSelectbox div[data-baseweb="select"] > div {
-    background: #090909;
-    color: #fff;
-    border-color: #333;
+div[data-baseweb="select"] > div {
+    background: var(--panel) !important;
+    color: var(--text) !important;
+    border-color: var(--border) !important;
 }
+[data-testid="stTabs"] [role="tab"] { color: var(--muted) !important; }
+[data-testid="stTabs"] [aria-selected="true"] { color: var(--green) !important; }
 .section-title {
-    font-size: 1.05rem;
-    font-weight: 700;
-    letter-spacing: 0.05em;
-    margin-top: 1rem;
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: .04em;
+    margin: 1.1rem 0 .55rem 0;
 }
-.small-muted {
-    color: #8e8e8e;
-    font-size: 0.82rem;
+.kicker {
+    color: var(--green);
+    font-size: .76rem;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    font-weight: 800;
 }
+.market-head {
+    border: 1px solid var(--border);
+    background: linear-gradient(180deg, #0d120f, #080b09);
+    border-radius: 14px;
+    padding: 18px 20px;
+    margin-bottom: 14px;
+}
+.market-title {
+    font-size: 2.25rem;
+    line-height: 1;
+    font-weight: 850;
+    margin: .15rem 0 .35rem 0;
+}
+.market-subtitle { color: var(--muted); }
+.pill {
+    display: inline-block;
+    padding: 4px 9px;
+    border-radius: 999px;
+    font-size: .73rem;
+    font-weight: 800;
+    margin: 0 5px 5px 0;
+}
+.pill-green { background: rgba(0,230,118,.12); color: var(--green); border: 1px solid rgba(0,230,118,.25); }
+.pill-red { background: rgba(255,92,92,.12); color: var(--red); border: 1px solid rgba(255,92,92,.25); }
+.pill-muted { background: #101612; color: var(--muted); border: 1px solid var(--border); }
+.stock-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px;
+    min-height: 128px;
+    transition: border-color .2s ease, transform .2s ease;
+}
+.stock-card:hover {
+    border-color: rgba(0,230,118,.55);
+    transform: translateY(-1px);
+}
+.stock-symbol { font-weight: 850; font-size: 1.02rem; }
+.stock-price { font-weight: 750; font-size: 1.08rem; margin-top: 4px; }
+.stock-meta { color: var(--muted); font-size: .75rem; margin-top: 2px; }
+.stock-green { color: var(--green); }
+.stock-red { color: var(--red); }
+.finding {
+    border-left: 2px solid var(--green);
+    background: #0c110e;
+    border-radius: 6px;
+    padding: 9px 10px;
+    margin-bottom: 7px;
+}
+.finding-label { color: var(--muted); font-size: .72rem; }
+.finding-value { font-weight: 800; font-size: .9rem; }
+.health-ok { color: var(--green); font-weight: 800; }
+.health-warn { color: var(--amber); font-weight: 800; }
+.small-muted { color: var(--muted); font-size: .79rem; }
+.disclaimer { color: var(--muted); font-size: .74rem; padding: 8px 0; }
 </style>
 """,
     unsafe_allow_html=True,
@@ -333,59 +409,366 @@ def pattern_summary(frame: pd.DataFrame) -> dict[str, object]:
     }
 
 
-def make_chart(frame: pd.DataFrame, symbol: str) -> go.Figure:
-    data = frame.tail(120).copy()
+def _range_frame(frame: pd.DataFrame, range_name: str) -> pd.DataFrame:
+    data = frame.copy()
+    if "Date" in data.columns:
+        data["Date"] = pd.to_datetime(data["Date"])
+    days_map = {
+        "1M": 31,
+        "3M": 93,
+        "6M": 186,
+        "1Y": 365,
+        "3Y": 365 * 3,
+        "5Y": 365 * 5,
+        "MAX": None,
+    }
+    days = days_map.get(range_name)
+    if days is not None and not data.empty:
+        data = data[data["Date"] >= data["Date"].max() - pd.Timedelta(days=days)]
+    return data.reset_index(drop=True)
+
+
+def make_chart(
+    frame: pd.DataFrame,
+    symbol: str,
+    range_name: str = "1Y",
+    show_ema: bool = True,
+    show_sr: bool = True,
+) -> go.Figure:
+    data = _range_frame(frame, range_name)
+    if data.empty:
+        return go.Figure()
+
+    data["EMA20"] = data["Close"].ewm(span=20, adjust=False).mean()
+    data["EMA50"] = data["Close"].ewm(span=50, adjust=False).mean()
     data["support"] = data["Low"].rolling(20).min().shift(1)
     data["resistance"] = data["High"].rolling(20).max().shift(1)
+    delta = data["Close"].diff()
+    gain = delta.clip(lower=0).rolling(14).mean()
+    loss = (-delta.clip(upper=0)).rolling(14).mean()
+    rs = gain / loss.replace(0, np.nan)
+    data["RSI14"] = (100 - 100 / (1 + rs)).fillna(50)
+    volume_colors = [
+        "#00e676" if close >= open_ else "#ff5c5c"
+        for open_, close in zip(data["Open"], data["Close"], strict=True)
+    ]
 
-    figure = go.Figure(
-        data=[
-            go.Candlestick(
-                x=data["Date"],
-                open=data["Open"],
-                high=data["High"],
-                low=data["Low"],
-                close=data["Close"],
-                increasing_line_color="#fff",
-                decreasing_line_color="#777",
-                increasing_fillcolor="#fff",
-                decreasing_fillcolor="#777",
-                name=symbol,
-            ),
-            go.Scatter(
-                x=data["Date"],
-                y=data["support"],
-                mode="lines",
-                line={"color": "#555", "dash": "dot"},
-                name="Support",
-            ),
-            go.Scatter(
-                x=data["Date"],
-                y=data["resistance"],
-                mode="lines",
-                line={"color": "#aaa", "dash": "dot"},
-                name="Resistance",
-            ),
-        ]
+    fig = make_subplots(
+        rows=3,
+        cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.025,
+        row_heights=[0.64, 0.18, 0.18],
+        subplot_titles=(f"{symbol} · {range_name}", "Volume", "RSI 14"),
     )
-    figure.update_layout(
-        paper_bgcolor="#000",
-        plot_bgcolor="#000",
-        font_color="#fff",
-        height=520,
-        xaxis_rangeslider_visible=False,
-        margin=dict(l=20, r=20, t=20, b=20),
-        legend=dict(
-            bgcolor="#000",
-            font=dict(color="#fff"),
+
+    fig.add_trace(
+        go.Candlestick(
+            x=data["Date"],
+            open=data["Open"],
+            high=data["High"],
+            low=data["Low"],
+            close=data["Close"],
+            increasing_line_color="#00e676",
+            increasing_fillcolor="#00e676",
+            decreasing_line_color="#ff5c5c",
+            decreasing_fillcolor="#ff5c5c",
+            name=symbol,
         ),
+        row=1,
+        col=1,
     )
-    figure.update_xaxes(showgrid=False)
-    figure.update_yaxes(
-        showgrid=True,
-        gridcolor="#1b1b1b",
+
+    if show_ema:
+        fig.add_trace(
+            go.Scatter(
+                x=data["Date"], y=data["EMA20"], mode="lines", name="EMA 20",
+                line={"color": "#7ef2b1", "width": 1.5},
+            ),
+            row=1, col=1,
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=data["Date"], y=data["EMA50"], mode="lines", name="EMA 50",
+                line={"color": "#b8c4bd", "width": 1.2},
+            ),
+            row=1, col=1,
+        )
+
+    if show_sr:
+        fig.add_trace(
+            go.Scatter(
+                x=data["Date"], y=data["support"], mode="lines", name="Support",
+                line={"color": "#4ea87a", "dash": "dot", "width": 1},
+            ),
+            row=1, col=1,
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=data["Date"], y=data["resistance"], mode="lines", name="Resistance",
+                line={"color": "#ad766f", "dash": "dot", "width": 1},
+            ),
+            row=1, col=1,
+        )
+
+    fig.add_trace(
+        go.Bar(
+            x=data["Date"], y=data["Volume"], name="Volume",
+            marker_color=volume_colors, opacity=0.72,
+        ),
+        row=2, col=1,
     )
-    return figure
+    fig.add_trace(
+        go.Scatter(
+            x=data["Date"], y=data["RSI14"], mode="lines", name="RSI 14",
+            line={"color": "#00e676", "width": 1.5},
+        ),
+        row=3, col=1,
+    )
+    fig.add_hline(y=70, line_dash="dot", line_color="#6f7b74", row=3, col=1)
+    fig.add_hline(y=30, line_dash="dot", line_color="#6f7b74", row=3, col=1)
+
+    fig.update_layout(
+        paper_bgcolor="#060806",
+        plot_bgcolor="#060806",
+        font={"color": "#e8f2eb"},
+        height=720,
+        margin={"l": 8, "r": 8, "t": 38, "b": 8},
+        hovermode="x unified",
+        legend={
+            "orientation": "h",
+            "yanchor": "bottom",
+            "y": 1.01,
+            "xanchor": "left",
+            "x": 0,
+            "bgcolor": "rgba(0,0,0,0)",
+        },
+        xaxis_rangeslider_visible=False,
+        bargap=0.05,
+    )
+    for row in (1, 2, 3):
+        fig.update_xaxes(showgrid=False, zeroline=False, color="#738078", row=row, col=1)
+        fig.update_yaxes(showgrid=True, gridcolor="#162019", zeroline=False, color="#738078", row=row, col=1)
+    fig.update_yaxes(range=[0, 100], row=3, col=1)
+    return fig
+
+
+def _sparkline_svg(history: pd.DataFrame, points: int = 34) -> str:
+    if history is None or history.empty or "Close" not in history:
+        return ""
+    values = pd.to_numeric(history["Close"], errors="coerce").dropna().tail(points).to_numpy()
+    if len(values) < 2:
+        return ""
+    lo, hi = float(values.min()), float(values.max())
+    span = max(hi - lo, 1e-9)
+    width, height = 160, 34
+    coords = []
+    for idx, value in enumerate(values):
+        x = idx / (len(values) - 1) * width
+        y = height - ((float(value) - lo) / span) * (height - 3) - 1
+        coords.append(f"{x:.1f},{y:.1f}")
+    stroke = "#00e676" if values[-1] >= values[0] else "#ff5c5c"
+    return (
+        f'<svg viewBox="0 0 {width} {height}" width="100%" height="34" preserveAspectRatio="none">'
+        f'<polyline points="{" ".join(coords)}" fill="none" stroke="{stroke}" '
+        'stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+    )
+
+
+def render_stock_cards(
+    frame: pd.DataFrame,
+    histories: dict[str, pd.DataFrame],
+    title: str,
+    subtitle: str,
+    limit: int = 5,
+) -> None:
+    st.markdown(
+        f'<div class="section-title">{title}</div>'
+        f'<div class="small-muted" style="margin:-3px 0 8px 0">{subtitle}</div>',
+        unsafe_allow_html=True,
+    )
+    if frame.empty:
+        st.info("No stocks currently meet this screen.")
+        return
+    subset = frame.head(limit).copy()
+    cols = st.columns(len(subset))
+    for col, (_, row) in zip(cols, subset.iterrows(), strict=True):
+        symbol = str(row["symbol"])
+        price = float(row.get("price", 0.0))
+        change = float(row.get("change_pct", 0.0))
+        up_prob = float(row.get("up_probability", np.nan))
+        potential = float(row.get("potential", np.nan))
+        activity = float(row.get("activity_score", np.nan))
+        cls = "stock-green" if change >= 0 else "stock-red"
+        prob_text = f"{up_prob * 100:.0f}%" if np.isfinite(up_prob) else "—"
+        pot_text = f"{potential:.0f}" if np.isfinite(potential) else "—"
+        act_text = f"{activity:.0f}" if np.isfinite(activity) else "—"
+        spark = _sparkline_svg(histories.get(symbol))
+        html = (
+            f'<div class="stock-card">'
+            f'<div class="stock-symbol">{symbol}</div>'
+            f'<div class="stock-price">₹{price:,.2f}</div>'
+            f'<div class="{cls}">{change:+.2f}% session</div>'
+            f'<div style="margin-top:6px">{spark}</div>'
+            f'<div class="stock-meta">Model up <b>{prob_text}</b> · Potential <b>{pot_text}</b></div>'
+            f'<div class="stock-meta">Activity <b>{act_text}</b></div>'
+            f'</div>'
+        )
+        with col:
+            st.markdown(html, unsafe_allow_html=True)
+
+
+def render_market_finding_sidebar(
+    combined: pd.DataFrame,
+    live: pd.DataFrame,
+    status: str,
+    model_ready: bool,
+    eval_ready: bool,
+    rl_ready: bool,
+) -> None:
+    if combined.empty:
+        return
+    advances = int((combined["change_pct"] > 0).sum())
+    declines = int((combined["change_pct"] < 0).sum())
+    unchanged = int((combined["change_pct"] == 0).sum())
+    active = combined.nlargest(1, "activity_score").iloc[0]
+    model_leader = combined.nlargest(1, "up_probability").iloc[0]
+    potential_leader = combined.nlargest(1, "potential").iloc[0]
+    attention_leader = combined.nlargest(1, "attention_score").iloc[0]
+    avg_vol = float(pd.to_numeric(combined["volatility_20d"], errors="coerce").mean())
+    last_provider = pd.to_datetime(live["timestamp"], errors="coerce").max()
+
+    with st.sidebar:
+        st.markdown("### Market findings")
+        st.markdown(
+            f'<div class="finding"><div class="finding-label">Breadth</div>'
+            f'<div class="finding-value">↑ {advances} · ↓ {declines} · • {unchanged}</div></div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f'<div class="finding"><div class="finding-label">Most active</div>'
+            f'<div class="finding-value">{active["symbol"]} · {float(active["activity_score"]):.0f}</div></div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f'<div class="finding"><div class="finding-label">Model up-probability leader</div>'
+            f'<div class="finding-value">{model_leader["symbol"]} · {float(model_leader["up_probability"])*100:.0f}%</div></div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f'<div class="finding"><div class="finding-label">Potential leader</div>'
+            f'<div class="finding-value">{potential_leader["symbol"]} · {float(potential_leader["potential"]):.0f}/100</div></div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f'<div class="finding"><div class="finding-label">Attention leader (proxy)</div>'
+            f'<div class="finding-value">{attention_leader["symbol"]} · {float(attention_leader["attention_score"]):.0f}</div></div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f'<div class="finding"><div class="finding-label">20D average volatility</div>'
+            f'<div class="finding-value">{avg_vol*100:.2f}%</div></div>',
+            unsafe_allow_html=True,
+        )
+        provider_text = last_provider.strftime("%H:%M:%S") if pd.notna(last_provider) else "—"
+        st.caption(f"Feed: {status} · provider timestamp {provider_text}")
+
+        st.markdown("### System health")
+        st.markdown(
+            f'Model artifacts: <span class="{"health-ok" if model_ready else "health-warn"}">'
+            f'{"READY" if model_ready else "MISSING"}</span>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f'Holdout evaluation: <span class="{"health-ok" if eval_ready else "health-warn"}">'
+            f'{"READY" if eval_ready else "PENDING"}</span>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f'Online RL state: <span class="{"health-ok" if rl_ready else "health-warn"}">'
+            f'{"PERSISTED" if rl_ready else "NOT INITIALIZED"}</span>',
+            unsafe_allow_html=True,
+        )
+
+
+def render_model_performance() -> None:
+    if not EVAL_PATH.exists():
+        st.info("Model evaluation is not available yet.")
+        return
+    try:
+        holdout = json.loads(EVAL_PATH.read_text(encoding="utf-8"))
+    except Exception as exc:
+        st.error(f"Unable to read evaluation results: {exc}")
+        return
+
+    model_name = str(holdout.get("model", "TickerArc Multi-Horizon LSTM v2"))
+    mae = float(holdout.get("mae_5d", 0.0))
+    acc = float(holdout.get("direction_accuracy", 0.0))
+    samples = int(holdout.get("samples", 0))
+    stocks = int(holdout.get("stocks_evaluated", 0))
+    baseline = holdout.get("baselines", {})
+
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("5D return MAE", f"{mae*100:.2f}%")
+    m2.metric("Direction accuracy", f"{acc*100:.1f}%")
+    m3.metric("Holdout samples", f"{samples:,}")
+    m4.metric("Stocks evaluated", f"{stocks}")
+
+    st.caption(
+        f"{model_name} · frozen on latest {int(holdout.get('eval_years', EVAL_YEARS))}Y holdout · "
+        f"{holdout.get('evaluation_window', 'unknown window')}"
+    )
+
+    labels = [model_name]
+    mae_values = [mae]
+    acc_values = [acc]
+    for name, values in baseline.items():
+        labels.append(str(name).replace("_", " ").title())
+        mae_values.append(float(values.get("mae_5d", 0.0)))
+        acc_values.append(float(values.get("direction_accuracy", 0.0)))
+
+    p1, p2 = st.columns(2)
+    with p1:
+        fig = go.Figure(
+            go.Bar(
+                x=labels,
+                y=[v * 100 for v in mae_values],
+                marker_color=["#00e676"] + ["#465149"] * (len(labels) - 1),
+                text=[f"{v*100:.2f}%" for v in mae_values],
+                textposition="auto",
+            )
+        )
+        fig.update_layout(
+            title="5D return MAE · lower is better",
+            paper_bgcolor="#060806",
+            plot_bgcolor="#060806",
+            font={"color": "#e8f2eb"},
+            margin={"l": 10, "r": 10, "t": 45, "b": 20},
+            height=310,
+            yaxis_title="MAE (%)",
+        )
+        st.plotly_chart(fig, use_container_width=True, config={"displaylogo": False})
+    with p2:
+        fig = go.Figure(
+            go.Bar(
+                x=labels,
+                y=[v * 100 for v in acc_values],
+                marker_color=["#00e676"] + ["#465149"] * (len(labels) - 1),
+                text=[f"{v*100:.1f}%" for v in acc_values],
+                textposition="auto",
+            )
+        )
+        fig.update_layout(
+            title="Direction accuracy · 2Y holdout",
+            paper_bgcolor="#060806",
+            plot_bgcolor="#060806",
+            font={"color": "#e8f2eb"},
+            margin={"l": 10, "r": 10, "t": 45, "b": 20},
+            height=310,
+            yaxis_title="Accuracy (%)",
+            yaxis={"range": [0, 100]},
+        )
+        st.plotly_chart(fig, use_container_width=True, config={"displaylogo": False})
 
 
 def inference_universe(
@@ -528,52 +911,35 @@ def render_table(frame: pd.DataFrame, title: str) -> None:
     )
 
 
-st.title("TickerArc")
-st.caption("Stock Analysis and Prediction System")
+st.markdown(
+    """
+    <div class="market-head">
+        <div class="kicker">NIFTY 50 · MARKET TERMINAL</div>
+        <div class="market-title">TickerArc</div>
+        <div class="market-subtitle">Live market activity, model signals, technical structure and online RL in one workspace.</div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 with st.sidebar:
-    st.markdown("### Controls")
-    refresh_minutes = st.selectbox(
-        "Refresh interval",
-        [1, 3],
-        index=1,
-    )
+    st.markdown("### Workspace")
+    refresh_minutes = st.selectbox("Refresh", [1, 3], index=1)
     selected_symbol = st.selectbox(
-        "Stock",
+        "Instrument",
         NIFTY50_SYMBOLS,
         index=0,
+        key="stock_selector",
     )
-
+    chart_range = st.selectbox(
+        "Chart range",
+        ["1M", "3M", "6M", "1Y", "3Y", "5Y", "MAX"],
+        index=3,
+    )
+    show_ema = st.checkbox("EMA 20 / 50", value=True)
+    show_sr = st.checkbox("Support / resistance", value=True)
     st.markdown("---")
-    st.markdown("### Model")
-    st.write("Forecast: Multi-Horizon LSTM v2")
-    st.write("Horizons: 1D / 5D / 10D")
-    st.write("RL: LSTM-DQN module available")
-    st.write("Online RL: learns from each live interval")
-
-    if EVAL_PATH.exists():
-        try:
-            holdout = json.loads(EVAL_PATH.read_text(encoding="utf-8"))
-            st.markdown("### 24Y / 2Y evaluation")
-            st.write(f"5D MAE: {float(holdout['mae_5d']) * 100:.2f}%")
-            st.write(
-                f"Direction accuracy: "
-                f"{float(holdout['direction_accuracy']) * 100:.1f}%"
-            )
-            st.write(f"Holdout samples: {int(holdout['samples'])}")
-            if "baselines" in holdout:
-                st.markdown("**Baselines (same 2Y holdout)**")
-                for name, values in holdout["baselines"].items():
-                    st.write(
-                        f"{name}: MAE "
-                        f"{float(values['mae_5d']) * 100:.2f}% · "
-                        f"direction "
-                        f"{float(values['direction_accuracy']) * 100:.1f}%"
-                    )
-        except Exception:
-            pass
-
-    if st.button("Rebuild model"):
+    if st.button("Rebuild model", use_container_width=True):
         for path in (MODEL_PATH, SCALER_PATH, META_PATH, EVAL_PATH):
             path.unlink(missing_ok=True)
         get_model_bundle.clear()
@@ -599,285 +965,266 @@ def live_dashboard() -> None:
     live = get_live_data(tuple(NIFTY50_SYMBOLS))
 
     if live.empty:
-        st.error(
-            "No live market data returned. The free market-data provider "
-            "may be unavailable or rate-limited."
-        )
+        st.error("No live market data returned. The market-data provider may be unavailable or rate-limited.")
         return
 
     scores = build_activity_scores(live, histories)
     predictions = inference_universe(model_bundle, histories)
-    combined = add_potential_scores(
-        scores,
-        predictions,
-        histories,
+    combined = add_potential_scores(scores, predictions, histories)
+    if combined.empty:
+        st.warning("No combined market screen is available.")
+        return
+
+    render_market_finding_sidebar(
+        combined,
+        live,
+        status,
+        model_ready=MODEL_PATH.exists() and SCALER_PATH.exists(),
+        eval_ready=EVAL_PATH.exists(),
+        rl_ready=(MODEL_DIR / "tickerarc_online_lstm_dqn.pt").exists(),
     )
 
-    c1, c2, c3, c4 = st.columns(4)
+    advances = int((combined["change_pct"] > 0).sum())
+    declines = int((combined["change_pct"] < 0).sum())
+    h1 = combined.nlargest(1, "activity_score").iloc[0]
+    h2 = combined.nlargest(1, "up_probability").iloc[0]
+    h3 = combined.nlargest(1, "potential").iloc[0]
+
+    c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("Market", status)
-    c2.metric("Tracked", len(combined))
-    c3.metric("Refresh", f"{refresh_minutes} min")
-    c4.metric("Local time", now_label[-12:-6])
+    c2.metric("Adv / Dec", f"{advances} / {declines}")
+    c3.metric("Most active", str(h1["symbol"]))
+    c4.metric("Model up leader", str(h2["symbol"]), f"{float(h2['up_probability'])*100:.0f}%")
+    c5.metric("Potential leader", str(h3["symbol"]), f"{float(h3['potential']):.0f}/100")
+    st.caption(f"Session clock · {now_label}")
 
-    high = (
-        combined[combined["activity_band"] == "High"]
-        .sort_values("activity_score", ascending=False)
-        .head(10)
+    popular = combined.sort_values(["attention_score", "activity_score"], ascending=False)
+    active = combined.sort_values("activity_score", ascending=False)
+    model_buy = combined.sort_values(["up_probability", "potential", "return_5d"], ascending=False)
+    potential = combined.sort_values("potential", ascending=False)
+    low_attention = combined.sort_values("attention_score", ascending=True)
+
+    render_stock_cards(
+        active, histories, "Most active",
+        "Highest cross-sectional activity using volume, movement, range and turnover proxies.",
     )
-    low = (
-        combined[combined["activity_band"] == "Low"]
-        .sort_values("activity_score")
-        .head(10)
+    render_stock_cards(
+        popular, histories, "Popular / attention",
+        "Popularity is represented by the project's volume and turnover attention proxy.",
     )
-    low_volume = (
-        combined[combined["volume_band"] == "Low"]
-        .sort_values("volume_ratio")
-        .head(10)
+    render_stock_cards(
+        model_buy, histories, "Model buy signals",
+        "Stocks highest on modeled upward probability and potential score.",
     )
-    low_attention = (
-        combined[combined["attention_band"] == "Low"]
-        .sort_values("attention_score")
-        .head(10)
+    render_stock_cards(
+        potential, histories, "Potential leaders",
+        "Heuristic potential from model probability, expected return, activity, volume, patterns and risk penalty.",
+    )
+    render_stock_cards(
+        low_attention, histories, "Low-attention watch",
+        "Lower-attention instruments kept separate from the active and model-led screens.",
     )
 
-    render_table(high, "High activity")
-    render_table(low, "Low activity")
-    render_table(low_volume, "Low volume")
-    render_table(
-        low_attention,
-        "Low attention / popularity proxy",
-    )
-
-    online_result = None
-    catchup_info = None
-    selected_history = histories.get(selected_symbol)
     selected_live_rows = live[live["symbol"] == selected_symbol]
+    selected_history = histories.get(selected_symbol)
+    if selected_history is None or selected_live_rows.empty:
+        st.warning("Selected instrument is not currently available.")
+        return
 
-    if selected_history is not None and not selected_live_rows.empty:
-        selected_quote = selected_live_rows.iloc[0].to_dict()
-        online_manager = get_online_rl_manager()
-
-        try:
-            if online_manager.needs_catchup(
-                selected_symbol,
-                selected_quote["timestamp"],
-                refresh_minutes,
-            ):
-                with st.spinner(
-                    "Online RL: replaying missed intraday data…"
-                ):
-                    intraday = fetch_intraday_history(
-                        selected_symbol,
-                        period="5d",
-                        interval="1m",
-                    )
-                    catchup_info = online_manager.catch_up(
-                        selected_symbol,
-                        intraday,
-                        selected_history,
-                        refresh_minutes,
-                    )
-
-            # Historical catch-up can run while the market is closed, but a
-            # fresh action is created only during an open session.
-            if status == "OPEN":
-                online_result = online_manager.observe_live(
-                    selected_symbol,
-                    selected_history.iloc[-1],
-                    selected_quote,
-                    refresh_minutes,
-                )
-        except Exception as exc:
-            catchup_info = {
-                "transitions": 0,
-                "status": f"Online RL unavailable: {exc}",
-            }
-
-    st.markdown(
-        '<div class="section-title">Selected stock</div>',
-        unsafe_allow_html=True,
-    )
-    stock_live = combined[
-        combined["symbol"] == selected_symbol
-    ]
-    history = histories.get(selected_symbol)
-
-    if stock_live.empty or history is None:
-        st.warning("Selected stock is not currently available.")
+    selected_quote = selected_live_rows.iloc[0].to_dict()
+    stock_live = combined[combined["symbol"] == selected_symbol]
+    if stock_live.empty:
+        st.warning("Selected instrument is not available in the combined screen.")
         return
 
     row = stock_live.iloc[0]
-    patterns = pattern_summary(history)
+    patterns = pattern_summary(selected_history)
     prediction = row.to_dict()
-
-    # Feed actual pattern score into the analysis agent.
-    prediction["risk_penalty"] = min(
-        float(prediction.get("volatility_5d", 0.0)) * 100,
-        30,
-    )
-
+    prediction["risk_penalty"] = min(float(prediction.get("volatility_5d", 0.0)) * 100, 30)
     result = TickerArcAgent().analyze(
-        selected_symbol,
-        row.to_dict(),
-        prediction,
-        patterns,
+        selected_symbol, row.to_dict(), prediction, patterns
     )
 
-    left, right = st.columns([2.0, 1.0])
-    with left:
-        st.plotly_chart(
-            make_chart(history, selected_symbol),
-            use_container_width=True,
-            config={"displaylogo": False},
-        )
+    st.markdown(
+        f'<div class="section-title">Selected instrument · {selected_symbol}</div>',
+        unsafe_allow_html=True,
+    )
+    q1, q2, q3, q4, q5 = st.columns(5)
+    q1.metric("Price", f"₹{float(row['price']):,.2f}", f"{float(row['change_pct']):+.2f}%")
+    q2.metric("1D model", f"{float(row['return_1d'])*100:+.2f}%")
+    q3.metric("5D model", f"{float(row['return_5d'])*100:+.2f}%")
+    q4.metric("10D model", f"{float(row['return_10d'])*100:+.2f}%")
+    q5.metric("Potential", f"{float(result.potential):.0f}/100")
 
-    with right:
-        st.metric(
-            "Current price",
-            f"₹{float(row['price']):,.2f}",
-            f"{float(row['change_pct']):+.2f}%",
-        )
-        st.metric(
-            "Potential",
-            f"{result.potential:.0f}/100",
-        )
-        st.metric(
-            "LSTM direction",
-            str(row.get("direction", "NEUTRAL")),
-        )
-        st.write(
-            f"**Model:** "
-            f"{row.get('model_name', 'TickerArc Multi-Horizon LSTM v1')}"
-        )
-        st.write(
-            f"**Up probability:** "
-            f"{float(row.get('up_probability', 0))*100:.1f}%"
-        )
-        st.write(
-            f"**Neutral probability:** "
-            f"{float(row.get('neutral_probability', 0))*100:.1f}%"
-        )
-        st.write(
-            f"**Down probability:** "
-            f"{float(row.get('down_probability', 0))*100:.1f}%"
-        )
+    st.plotly_chart(
+        make_chart(
+            selected_history,
+            selected_symbol,
+            chart_range,
+            show_ema=show_ema,
+            show_sr=show_sr,
+        ),
+        use_container_width=True,
+        config={
+            "displaylogo": False,
+            "scrollZoom": True,
+            "modeBarButtonsToRemove": ["lasso2d", "select2d"],
+        },
+    )
 
-    p1, p2, p3, p4 = st.columns(4)
-    current_price = float(row["price"])
+    details_tab, signals_tab, performance_tab, rl_tab = st.tabs(
+        ["Instrument overview", "Signals & structure", "Model performance", "Online RL"]
+    )
 
-    for column, horizon, return_key in [
-        (p1, "1D", "return_1d"),
-        (p2, "5D", "return_5d"),
-        (p3, "10D", "return_10d"),
-        (p4, "5D volatility", "volatility_5d"),
-    ]:
-        value = float(row[return_key])
-        if horizon == "5D volatility":
-            column.metric(
-                horizon,
-                f"{value*100:.2f}%",
+    with details_tab:
+        d1, d2 = st.columns([1.35, 1])
+        with d1:
+            st.markdown("#### Session profile")
+            s1, s2, s3 = st.columns(3)
+            s1.metric("Open", f"₹{float(selected_quote.get('open', row['price'])):,.2f}")
+            s2.metric("High", f"₹{float(selected_quote.get('day_high', row['price'])):,.2f}")
+            s3.metric("Low", f"₹{float(selected_quote.get('day_low', row['price'])):,.2f}")
+            st.markdown(
+                f'<div class="small-muted">Session volume: {float(selected_quote.get("session_volume", 0)):,.0f} · '
+                f'Relative volume: {float(row.get("volume_ratio", 0)):.2f}x · '
+                f'Activity score: {float(row.get("activity_score", 0)):.1f}</div>',
+                unsafe_allow_html=True,
+            )
+            st.markdown("#### Model distribution")
+            donut = go.Figure(
+                go.Pie(
+                    labels=["Down", "Neutral", "Up"],
+                    values=[
+                        float(row.get("down_probability", 0)),
+                        float(row.get("neutral_probability", 0)),
+                        float(row.get("up_probability", 0)),
+                    ],
+                    hole=0.68,
+                    marker={"colors": ["#ff5c5c", "#5d6a62", "#00e676"]},
+                )
+            )
+            donut.update_layout(
+                paper_bgcolor="#060806",
+                plot_bgcolor="#060806",
+                font={"color": "#e8f2eb"},
+                height=300,
+                margin={"l": 10, "r": 10, "t": 15, "b": 10},
+                showlegend=True,
+            )
+            st.plotly_chart(donut, use_container_width=True, config={"displaylogo": False})
+        with d2:
+            st.markdown("#### Analysis agent")
+            st.write(result.summary)
+            st.markdown(
+                '<div class="disclaimer">Forecasts, probabilities and potential are model outputs and heuristics, not guaranteed future results.</div>',
+                unsafe_allow_html=True,
+            )
+            st.markdown("#### Provider / system status")
+            provider_time = pd.to_datetime(selected_quote.get("timestamp"), errors="coerce")
+            provider_text = provider_time.strftime("%Y-%m-%d %H:%M:%S") if pd.notna(provider_time) else "Unavailable"
+            st.write(f"Market state: **{status}**")
+            st.write(f"Provider timestamp: **{provider_text}**")
+            st.write(f"Forecast model: **{row.get('model_name', 'TickerArc Multi-Horizon LSTM v2')}**")
+
+    with signals_tab:
+        p1, p2 = st.columns(2)
+        with p1:
+            st.markdown("#### Candlestick patterns")
+            candle_items = patterns["candle_hits"][:10] or ["No strong recent TA-Lib signal"]
+            for item in candle_items:
+                st.markdown(f'<span class="pill pill-green">{item}</span>', unsafe_allow_html=True)
+        with p2:
+            st.markdown("#### Chart patterns")
+            chart_items = patterns["chart_hits"][:10] or ["No strong heuristic chart structure"]
+            for item in chart_items:
+                st.markdown(f'<span class="pill pill-muted">{item}</span>', unsafe_allow_html=True)
+
+        st.markdown("#### Forecast distribution")
+        f1, f2, f3, f4 = st.columns(4)
+        f1.metric("Up probability", f"{float(row['up_probability'])*100:.1f}%")
+        f2.metric("Neutral probability", f"{float(row['neutral_probability'])*100:.1f}%")
+        f3.metric("Down probability", f"{float(row['down_probability'])*100:.1f}%")
+        f4.metric("5D volatility", f"{float(row['volatility_5d'])*100:.2f}%")
+
+    with performance_tab:
+        render_model_performance()
+
+    online_result = None
+    catchup_info = None
+    try:
+        online_manager = get_online_rl_manager()
+        if online_manager.needs_catchup(
+            selected_symbol,
+            selected_quote["timestamp"],
+            refresh_minutes,
+        ):
+            with st.spinner("Online RL: replaying missed intraday data…"):
+                intraday = fetch_intraday_history(
+                    selected_symbol,
+                    period="5d",
+                    interval="1m",
+                )
+                catchup_info = online_manager.catch_up(
+                    selected_symbol,
+                    intraday,
+                    selected_history,
+                    refresh_minutes,
+                )
+        if status == "OPEN":
+            online_result = online_manager.observe_live(
+                selected_symbol,
+                selected_history.iloc[-1],
+                selected_quote,
+                refresh_minutes,
+            )
+    except Exception as exc:
+        catchup_info = {"transitions": 0, "status": f"Online RL unavailable: {exc}"}
+
+    with rl_tab:
+        r1, r2, r3, r4 = st.columns(4)
+        if online_result is not None:
+            r1.metric("RL action", online_result.action_name)
+            r2.metric("Position", "LONG" if online_result.position else "FLAT")
+            r3.metric(
+                "Interval reward",
+                f"{online_result.reward * 100:+.4f}%" if online_result.reward is not None else "Waiting",
+            )
+            r4.metric("RL updates", f"{online_result.steps:,}")
+            st.caption(
+                f"{online_result.status} · replay memory {online_result.replay_size:,}"
             )
         else:
-            column.metric(
-                horizon,
-                f"{value*100:+.2f}%",
-                f"₹{current_price*(1+value):,.2f}",
+            r1.metric("RL action", "WAIT")
+            r2.metric("Position", "FLAT")
+            r3.metric("Interval reward", "Waiting")
+            r4.metric("RL updates", "—")
+        if catchup_info is not None:
+            st.caption(
+                f"Catch-up: {catchup_info.get('status', 'completed')} "
+                f"({int(catchup_info.get('transitions', 0)):,} transitions)"
             )
 
-    a, b = st.columns(2)
-    with a:
-        st.markdown("**Candlestick patterns**")
-        for item in patterns["candle_hits"][:8] or ["None detected"]:
-            st.write(f"• {item}")
-
-    with b:
-        st.markdown("**Chart patterns**")
-        for item in patterns["chart_hits"][:8] or ["None detected"]:
-            st.write(f"• {item}")
-
-    st.markdown("**Online Reinforcement Learning**")
-    rl1, rl2, rl3, rl4 = st.columns(4)
-
-    if online_result is not None:
-        rl1.metric("RL action", online_result.action_name)
-        rl2.metric(
-            "Position",
-            "LONG" if online_result.position else "FLAT",
-        )
-        rl3.metric(
-            "Interval reward",
-            (
-                f"{online_result.reward * 100:+.4f}%"
-                if online_result.reward is not None
-                else "Waiting"
-            ),
-        )
-        rl4.metric(
-            "RL updates",
-            f"{online_result.steps:,}",
-        )
-        st.caption(
-            f"{online_result.status} "
-            f"Replay memory: {online_result.replay_size:,}."
-        )
-    else:
-        rl1.metric("RL action", "WAIT")
-        rl2.metric("Position", "FLAT")
-        rl3.metric("Interval reward", "Waiting")
-        rl4.metric("RL updates", "—")
-
-    if catchup_info is not None:
-        st.caption(
-            f"Catch-up: {catchup_info.get('status', 'completed')} "
-            f"({int(catchup_info.get('transitions', 0)):,} transitions)"
+        st.markdown(
+            '<div class="disclaimer">The online LSTM-DQN policy learns from realized live intervals and persists its checkpoint/replay state locally. The supervised forecast model remains separate and frozen during live inference.</div>',
+            unsafe_allow_html=True,
         )
 
-    st.caption(
-        "The online RL loop records an action at the current interval, "
-        "waits for the next 1- or 3-minute interval, converts the realized "
-        "price move into a reward, updates the LSTM-DQN, and persists its "
-        "checkpoint/replay memory so learning continues after restart."
-    )
-
-    st.markdown("**Analysis Agent**")
-    st.write(result.summary)
-    st.caption(
-        "The model uses the latest completed daily feature sequence; "
-        "the live layer supplies the current market price/activity snapshot. "
-        "Potential and prediction values are model/heuristic outputs, not "
-        "guaranteed future results."
-    )
-
-    with st.expander("Advanced walk-forward evaluation"):
-        st.write(
-            "Expanding chronological folds are retrained on earlier data "
-            "and scored only on later data. This is intentionally on-demand "
-            "because retraining each fold is much heavier than live inference."
-        )
-        folds = st.slider(
-            "Folds",
-            min_value=2,
-            max_value=4,
-            value=3,
-        )
-        epochs = st.slider(
-            "Epochs per fold",
-            min_value=1,
-            max_value=5,
-            value=2,
-        )
-
-        if st.button("Run walk-forward evaluation"):
-            with st.spinner("Running chronological folds…"):
-                try:
-                    metrics = walk_forward_evaluate(
-                        history,
-                        folds=folds,
-                        train_epochs=epochs,
-                    )
-                    st.json(metrics)
-                except Exception as exc:
-                    st.error(str(exc))
+        with st.expander("Advanced walk-forward evaluation"):
+            st.write("Expanding chronological folds retrain on earlier observations and score later observations only.")
+            folds = st.slider("Folds", 2, 4, 3)
+            epochs = st.slider("Epochs per fold", 1, 5, 2)
+            if st.button("Run walk-forward evaluation"):
+                with st.spinner("Running chronological folds…"):
+                    try:
+                        metrics = walk_forward_evaluate(
+                            selected_history,
+                            folds=folds,
+                            train_epochs=epochs,
+                        )
+                        st.json(metrics)
+                    except Exception as exc:
+                        st.error(str(exc))
 
 
 live_dashboard()
+
