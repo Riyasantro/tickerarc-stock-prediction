@@ -780,37 +780,37 @@ def render_market_finding_sidebar(
     avg_vol = float(pd.to_numeric(combined["volatility_20d"], errors="coerce").mean())
     last_provider = pd.to_datetime(live["timestamp"], errors="coerce").max()
 
-    with st.sidebar:
-    st.markdown(
-        '<div class="terminal-brand">TICKERARC</div>'
-        '<div class="small-muted">NIFTY 50 MARKET</div>',
-        unsafe_allow_html=True,
-    )
-    st.markdown("---")
-    st.markdown("**MARKET**")
-    st.radio(
-        "Market",
-        ["Overview", "Most Active", "Popular", "Model Signals", "Potential", "Low Attention"],
-        key="market_section",
-        label_visibility="collapsed",
-    )
-    st.markdown("---")
+with st.sidebar:
+        st.markdown(
+            '<div class="terminal-brand">TICKERARC</div>'
+            '<div class="small-muted">NIFTY 50 MARKET</div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown("---")
+        st.markdown("**MARKET**")
+        st.radio(
+            "Market",
+            ["Overview", "Most Active", "Popular", "Model Signals", "Potential", "Low Attention"],
+            key="market_section",
+            label_visibility="collapsed",
+        )
+        st.markdown("---")
 
-    current_symbol = st.session_state.selected_symbol
-    current_index = NIFTY50_SYMBOLS.index(current_symbol) if current_symbol in NIFTY50_SYMBOLS else 0
-    st.selectbox(
-        "Instrument",
-        NIFTY50_SYMBOLS,
-        index=current_index,
-        key="stock_selector",
-        on_change=_sidebar_stock_changed,
-    )
+        current_symbol = st.session_state.selected_symbol
+        current_index = NIFTY50_SYMBOLS.index(current_symbol) if current_symbol in NIFTY50_SYMBOLS else 0
+        st.selectbox(
+            "Instrument",
+            NIFTY50_SYMBOLS,
+            index=current_index,
+            key="stock_selector",
+            on_change=_sidebar_stock_changed,
+        )
 
-    if st.session_state.market_view == "stock":
-        if st.button("← Back to market", use_container_width=True):
-            st.session_state.market_view = "market"
-            st.session_state.chart_focus = None
-            st.rerun()
+        if st.session_state.market_view == "stock":
+            if st.button("← Back to market", use_container_width=True):
+                st.session_state.market_view = "market"
+                st.session_state.chart_focus = None
+                st.rerun()
 
 try:
     bootstrap_project()
